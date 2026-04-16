@@ -1,0 +1,15 @@
+{
+  "name": "standup-workspace",
+  "version": "1.0.0",
+  "description": "**定位**：脱口秀/单口喜剧拉片分析系统 — 核心是\"原文—结构—态度—技巧—问题判断—启发\"五联动分析。",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  }
+}
