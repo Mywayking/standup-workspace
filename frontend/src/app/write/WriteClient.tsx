@@ -496,16 +496,24 @@ function StreamingResultCard({
 
   if (stream.phase === "idle" || (!stream.displayText && stream.phase === "thinking")) {
     return (
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-12 flex flex-col items-center justify-center text-center min-h-64">
-        <svg className="mb-3" width="48" height="48" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="32" height="32" rx="8" fill="#e0e7ff"/>
-          <ellipse cx="16" cy="12" rx="6" ry="8" fill="#6366f1"/>
-          <rect x="13" y="20" width="6" height="6" rx="1" fill="#6366f1"/>
-          <rect x="14.5" y="26" width="3" height="2" rx="0.5" fill="#6366f1"/>
-          <rect x="10" y="8" width="12" height="3" rx="1.5" fill="none" stroke="#6366f1" stroke-width="1.5"/>
-        </svg>
-        <p className="text-base font-medium text-gray-500">左侧输入段子后点击分析</p>
-        <p className="text-sm text-gray-400 mt-1">评分、结构、技巧分析马上呈现</p>
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+        <p className="text-base font-bold text-gray-800 mb-1">你将获得：</p>
+        <div className="space-y-3">
+          {[
+            "一句话总诊断",
+            "最该优先修改的3个问题",
+            "已经有效的笑点",
+            "可直接替换的改写建议",
+          ].map((item) => (
+            <div key={item} className="flex items-start gap-2.5">
+              <span className="text-green-500 mt-0.5 shrink-0">✓</span>
+              <p className="text-sm text-gray-600">{item}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 pt-4 border-t border-gray-100">
+          <p className="text-xs text-gray-400">分析完成后自动呈现</p>
+        </div>
       </div>
     );
   }
@@ -981,6 +989,20 @@ export default function WritePage() {
   const isStreaming = stream.phase === "thinking";
   const hasResult = stream.phase === "done" && stream.result;
 
+  const EXAMPLE_SCRIPTS = [
+    "我上次去相亲，对面姑娘问我做什么的，我说程序员。她眼睛一亮：那你加班的时候，是不是算在约会啊？我说不是，她说那你加班的时候在想什么，我说我在想为什么这个bug老是报错。她说你这个人真的很无聊，连约会的时候都在想代码。我说不是，我在想为什么bug老是报错，她说那你想出来了吗，我说我把那个bug修好了，她说那你现在还约会吗，我说不了，我今天要加班修另一个bug。",
+    "我最近时间管理出了大问题，每天早上起床都要想今天几点出门才不会迟到。结果我发现一个问题：只要我提前5分钟起床，这5分钟就会莫名其妙消失。后来我想明白了，原来这5分钟被用来看手机了。所以我现在出门时间根本没变，只是早起看了会儿手机而已。",
+    "地铁上我偷听旁边两个人聊天，一个人说我上周去体检，医生说我睡眠不足，我说我也睡眠不足，他说那你睡几个小时，我说四个小时，他说那不行，要睡够八个小时，我说我也知道，但问题是我每天晚上都舍不得睡，因为我觉得睡着了这一天就真的结束了。",
+  ];
+
+  const fillExample = () => {
+    const idx = Math.floor(Math.random() * EXAMPLE_SCRIPTS.length);
+    setInputText(EXAMPLE_SCRIPTS[idx]);
+    setContentWarning(null);
+    // Scroll to analyze button
+    document.querySelector("button[disabled]")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
@@ -1029,17 +1051,43 @@ export default function WritePage() {
       <main className="flex-1 max-w-6xl mx-auto w-full p-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left: Input */}
-          <div className="space-y-3">
+          <div className="space-y-4">
+            {/* 1.1 标题与副标题 */}
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 leading-snug">
+                把段子贴进来，看看它到底卡在哪
+              </h1>
+              <p className="text-sm text-gray-500 mt-2">
+                从结构、笑点、节奏、情绪推进、结尾几个角度帮你定位问题
+              </p>
+            </div>
+
             {contentWarning ? (
-              <div className="mb-2 text-xs text-orange-500 bg-orange-50 border border-orange-100 px-4 py-2 rounded-xl">
+              <div className="text-xs text-orange-500 bg-orange-50 border border-orange-100 px-4 py-2 rounded-xl">
                 ⚠️ {contentWarning}，仍可分析
               </div>
             ) : null}
+
+            {/* 1.4 引导文案 */}
+            <p className="text-sm text-gray-500">
+              把你最不确定的段子贴进来，我们先找出最该改的地方
+            </p>
+
+            {/* 1.5 示例段子 */}
+            <button
+              onClick={fillExample}
+              disabled={isStreaming}
+              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            >
+              <span>🔍</span>
+              <span>试试示例段子</span>
+            </button>
+
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <textarea
                 value={inputText}
                 onChange={(e) => { setInputText(e.target.value); setContentWarning(checkContentQuality(e.target.value)); }}
-                placeholder="粘贴或输入你的段子，至少20字..."
+                placeholder="把你不确定好不好笑的段子贴进来"
                 className="w-full px-5 py-4 text-sm text-gray-700 placeholder-gray-300 resize-none outline-none min-h-64"
                 style={{ fontFamily: "inherit" }}
                 disabled={isStreaming}
@@ -1052,13 +1100,13 @@ export default function WritePage() {
               </div>
             </div>
 
-            {/* Analyze Button */}
+            {/* 1.2 CTA 按钮 */}
             <button
               onClick={handleAnalyze}
               disabled={!canAnalyze || isStreaming}
-              className={`w-full py-3.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+              className={`w-full py-4 rounded-xl text-base font-semibold transition-all flex items-center justify-center gap-2 ${
                 canAnalyze && !isStreaming
-                  ? "bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                  ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
                   : "bg-gray-100 text-gray-400 cursor-not-allowed"
               }`}
             >
@@ -1070,12 +1118,11 @@ export default function WritePage() {
               ) : (
                 <>
                   <span>🔍</span>
-                  <span>分析这段</span>
+                  <span>开始诊断</span>
                 </>
               )}
             </button>
-
-
+            <p className="text-xs text-gray-400 text-center -mt-1">输入至少20字即可开始</p>
           </div>
 
           {/* Right: Feedback */}
