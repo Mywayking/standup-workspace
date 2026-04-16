@@ -28,3 +28,19 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Large binaries (.node, .wasm, .so)
+*.node
+*.wasm
+*.so
+
+# SWC/Tailwind binaries
+node_modules/@next/swc-*
+node_modules/lightningcss-*
+node_modules/@tailwindcss/oxide-*
+node_modules/@img/sharp-*
+
+# Large media
+*.mp4
+*.webm
+*.pdf

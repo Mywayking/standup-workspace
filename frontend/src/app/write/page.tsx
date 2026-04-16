@@ -438,14 +438,24 @@ function StreamingResultCard({
   onFeedback: (rating: 1 | 0, sessionId: string) => void;
 }) {
   if (stream.phase === "error") {
+    let msg = stream.error ?? "";
+    // Try to parse JSON error {error: "...", request_id: "..."}
+    try {
+      const parsed = JSON.parse(msg);
+      if (parsed.error) msg = parsed.error;
+    } catch { /* not JSON, use raw */ }
+    // Truncate super-long raw JSON displays
+    const display = msg.length > 200 ? msg.slice(0, 200) + "…（内容过长，可刷新重试）" : msg;
     return (
       <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-5">
-        <p className="text-sm text-red-500 mb-2">⚠ {stream.error}</p>
-        {stream.displayText && (
-          <pre className="text-xs text-gray-600 whitespace-pre-wrap break-all max-h-64 overflow-y-auto">
-            {stream.displayText}
-          </pre>
-        )}
+        <p className="text-sm text-red-500 mb-3 font-medium">⚠️ 分析失败</p>
+        <p className="text-sm text-gray-600 leading-relaxed">{display}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-3 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+        >
+          刷新重试
+        </button>
       </div>
     );
   }
