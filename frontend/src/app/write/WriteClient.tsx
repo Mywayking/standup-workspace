@@ -444,10 +444,18 @@ function StreamingResultCard({
   stream,
   onFeedback,
   onRetry,
+  setCmdKQuery,
+  setCmdKOpen,
+  inputText,
+  setInputText,
 }: {
   stream: StreamingState;
   onFeedback: (rating: 1 | 0, sessionId: string) => void;
   onRetry: () => void;
+  setCmdKQuery: (q: string) => void;
+  setCmdKOpen: (open: boolean) => void;
+  inputText: string;
+  setInputText: (text: string | ((prev: string) => string)) => void;
 }) {
   if (stream.phase === "error") {
     let msg = stream.error ?? "";
@@ -561,8 +569,40 @@ function StreamingResultCard({
   const r = stream.result;
   if (!r) return null;
 
+  // P1 衍生数据计算
+  const topProblems = r.segments
+    .filter((s) => s.problem)
+    .slice(0, 3)
+    .map((s) => s.problem);
+  const effectiveSegments = r.segments.filter((s) => !s.problem && s.text.trim().length > 10);
+  const effectiveJokes = effectiveSegments.slice(0, 3).map((s) => s.text.trim());
+  const getVerdict = () => {
+    if (r.comedy_type && r.premise) {
+      const p = r.premise.length > 30 ? r.premise.slice(0, 30) + "…" : r.premise;
+      return `这段属于「${r.comedy_type}」，核心前提是：${p}。`;
+    }
+    if (r.comedy_type) return `这段属于「${r.comedy_type}」`;
+    if (r.premise) {
+      const p = r.premise.length > 40 ? r.premise.slice(0, 40) + "…" : r.premise;
+      return `核心前提：${p}`;
+    }
+    if (r.theme_refined) return `主题：${r.theme_refined}`;
+    return "已完成分析，请查看以下详情";
+  };
+
   return (
     <>
+      {/* 2.1 总诊断 */}
+      <div className="bg-indigo-50 border-l-4 border-indigo-500 rounded-r-2xl p-4">
+        <div className="flex items-start gap-2">
+          <span className="text-indigo-500 mt-0.5 shrink-0">📌</span>
+          <div>
+            <p className="text-xs font-semibold text-indigo-600 mb-1">总诊断</p>
+            <p className="text-sm text-gray-800 leading-relaxed font-medium">{getVerdict()}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Core Info */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
         <div className="space-y-2">
@@ -622,6 +662,36 @@ function StreamingResultCard({
         </div>
       </div>
 
+      {/* 2.2 优先3个问题 */}
+      {topProblems.length > 0 && (
+        <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-5">
+          <p className="text-sm font-bold text-gray-800 mb-3">🔥 优先改这{topProblems.length}个</p>
+          <div className="space-y-2">
+            {topProblems.map((p, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className="text-red-500 font-bold shrink-0 mt-0.5">{i + 1}.</span>
+                <p className="text-sm text-gray-700 leading-relaxed">{esc(p)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 2.3 有效笑点 */}
+      {effectiveJokes.length > 0 && (
+        <div className="bg-white rounded-2xl border border-green-200 shadow-sm p-5">
+          <p className="text-sm font-bold text-gray-800 mb-3">✅ 已经有效的笑点</p>
+          <div className="space-y-2">
+            {effectiveJokes.map((j, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className="text-green-500 shrink-0 mt-0.5">✓</span>
+                <p className="text-sm text-gray-600 leading-relaxed line-clamp-2">{esc(j)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Segments */}
       {r.segments.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
@@ -655,31 +725,28 @@ function StreamingResultCard({
         </div>
       )}
 
-      {/* Script Changes */}
+      {/* 2.4 改写建议（升级版）*/}
       {r.script_changes.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <p className="text-sm font-semibold text-gray-700 mb-3">🔧 具体修改</p>
-          <div className="space-y-3">
+        <div className="bg-white rounded-2xl border border-orange-200 shadow-sm p-5">
+          <p className="text-sm font-bold text-gray-800 mb-3">✏️ 直接替换建议</p>
+          <div className="space-y-4">
             {r.script_changes.map((c, i) => (
-              <div key={i} className="p-3 bg-gray-50 rounded-xl space-y-1.5">
-                {c.location && <p className="text-sm text-gray-600 font-semibold">{esc(c.location)}</p>}
-                {c.original && (
-                  <div className="flex items-start gap-2">
-                    <span className="text-sm text-red-500 shrink-0 font-bold">-</span>
-                    <p className="text-sm text-gray-500 line-through">{esc(c.original)}</p>
+              <div key={i} className="space-y-2">
+                {c.location && (
+                  <p className="text-xs text-gray-400 font-medium">{esc(c.location)}</p>
+                )}
+                {c.original && c.improved && (
+                  <div className="flex items-start gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                    <p className="text-sm text-gray-500 line-through flex-1">{esc(c.original)}</p>
+                    <span className="text-gray-300 shrink-0 mx-1">→</span>
+                    <p className="text-sm text-gray-800 font-medium flex-1">{esc(c.improved)}</p>
                   </div>
                 )}
-                {c.improved && (
-                  <div className="flex items-start gap-2">
-                    <span className="text-sm text-green-600 shrink-0 font-bold">+</span>
-                    <p className="text-sm text-gray-800">{esc(c.improved)}</p>
-                  </div>
+                {c.technique_added && (
+                  <p className="text-xs text-orange-600 font-medium">技巧：{esc(c.technique_added)}</p>
                 )}
-                {(c.reason || c.technique_added) && (
-                  <p className="text-sm text-gray-600 pl-6 border-l-2 border-purple-200">
-                    {c.technique_added && <span className="text-purple-600 font-medium">[{esc(c.technique_added)}] </span>}
-                    {esc(c.reason)}
-                  </p>
+                {c.reason && (
+                  <p className="text-xs text-gray-500 leading-relaxed">{esc(c.reason)}</p>
                 )}
               </div>
             ))}
@@ -699,13 +766,43 @@ function StreamingResultCard({
         </div>
       )}
 
-      {/* Next Suggestion */}
-      {r.next_suggestion && (
-        <div className="bg-white rounded-2xl border border-amber-200 shadow-sm p-5">
-          <p className="text-sm font-semibold text-gray-700 mb-2">👉 下一步建议</p>
-          <p className="text-sm text-gray-600 leading-relaxed">{esc(r.next_suggestion)}</p>
+      {/* 2.5 下一步动作按钮组 */}
+      <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-5">
+        <p className="text-sm font-semibold text-gray-700 mb-3">继续创作</p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: "强化结尾", action: "strengthen_end" },
+            { label: "增加包袱", action: "more_punchlines" },
+            { label: "转综艺版", action: "variety_style" },
+            { label: "保存素材", action: "save_kb" },
+          ].map((btn) => (
+            <button
+              key={btn.action}
+              onClick={() => {
+                if (btn.action === "save_kb") {
+                  setCmdKQuery(inputText.slice(0, 50));
+                  setCmdKOpen(true);
+                } else if (btn.action === "variety_style") {
+                  setInputText((t) => t + '\n\n---\n[改编：综艺风格版本]');
+                } else {
+                  // Other actions: append hint to input
+                  const hints: Record<string, string> = {
+                    strengthen_end: '[改编提示：强化结尾，让爆点更炸]',
+                    more_punchlines: '[改编提示：增加2-3个转折和笑点]',
+                  };
+                  setInputText((t) => t + '\n\n---\n' + hints[btn.action]);
+                }
+              }}
+              className="px-4 py-2 text-sm border border-indigo-300 text-indigo-600 rounded-lg hover:bg-indigo-50 font-medium transition-colors"
+            >
+              {btn.label}
+            </button>
+          ))}
         </div>
-      )}
+        {r.next_suggestion && (
+          <p className="text-xs text-gray-400 mt-3 leading-relaxed">💡 {esc(r.next_suggestion)}</p>
+        )}
+      </div>
 
       {/* Feedback */}
       <div className="flex items-center justify-center gap-6 py-4">
@@ -1138,9 +1235,12 @@ export default function WritePage() {
                 setStream((s) => ({ ...s, feedbackSent: rating }));
               }}
               onRetry={() => {
-                // handleAnalyze resets state internally; inputText is already in closure
                 handleAnalyze();
               }}
+              setCmdKQuery={setCmdKQuery}
+              setCmdKOpen={setCmdKOpen}
+              inputText={inputText}
+              setInputText={setInputText}
             />
 
             {/* Copy Result — only when done */}
