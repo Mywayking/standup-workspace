@@ -343,7 +343,10 @@ function HistoryItemCard({
   onDelete: (id: string) => void;
 }) {
   const [hover, setHover] = useState(false);
-  const label = item.result?.comedy_type || item.result?.theme_refined?.slice(0, 20) || '已分析';
+  let label = '—';
+  try {
+    label = item.result?.comedy_type || (typeof item.result?.theme_refined === 'string' ? item.result.theme_refined.slice(0, 20) : '') || (item.result ? '已分析' : '—');
+  } catch {}
   const date = new Date(item.timestamp).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 
   return (
@@ -1157,16 +1160,20 @@ export default function WritePage() {
 
   const handleRestore = (item: HistoryItem) => {
     if (!item || !item.result) return;
-    setInputText(item.text ?? '');
-    setStream({
-      phase: "done",
-      rawTokens: "",
-      displayText: "",
-      result: item.result,
-      error: null,
-      sessionId: "",
-      feedbackSent: null,
-    });
+    try {
+      setInputText(item.text ?? '');
+      setStream({
+        phase: "done",
+        rawTokens: "",
+        displayText: "",
+        result: item.result,
+        error: null,
+        sessionId: "",
+        feedbackSent: null,
+      });
+    } catch (e) {
+      console.error('Failed to restore history item:', e);
+    }
   };
 
   const deleteHistory = (id: string) => {
