@@ -81,7 +81,7 @@ interface KbSegment {
 interface HistoryItem {
   id: string;
   text: string;
-  result: AnalyzeResult;
+  result: AnalyzeResult | null;
   timestamp: number;
 }
 
@@ -277,11 +277,11 @@ function CmdKModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 flex items-start justify-center pt-24 z-50"
+      className="fixed inset-0 bg-black/40 flex items-start justify-center pt-16 sm:pt-24 z-50"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-[700px] max-h-[70vh] flex flex-col overflow-hidden"
+        className="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-[700px] max-h-[70vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
@@ -293,7 +293,7 @@ function CmdKModal({
             onChange={(e) => { onQuery(e.target.value); doSearch(e.target.value); }}
             onKeyDown={handleKey}
             placeholder="搜索素材片段..."
-            className="flex-1 text-base text-gray-800 placeholder-gray-300 outline-none"
+            className="flex-1 text-base sm:text-base text-gray-800 placeholder-gray-300 outline-none bg-transparent"
           />
           <kbd className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">ESC</kbd>
         </div>
@@ -333,43 +333,104 @@ function CmdKModal({
 
 // ─── History Panel ────────────────────────────────────────────────────────────
 
+function HistoryItemCard({
+  item,
+  onRestore,
+  onDelete,
+}: {
+  item: HistoryItem;
+  onRestore: (item: HistoryItem) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [hover, setHover] = useState(false);
+  const label = item.result?.comedy_type || item.result?.theme_refined?.slice(0, 20) || '已分析';
+  const date = new Date(item.timestamp).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+
+  return (
+    <div
+      className="relative shrink-0 w-48 group"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <button
+        onClick={() => onRestore(item)}
+        className="w-full p-3 bg-white rounded-xl border border-gray-100 hover:border-blue-300 hover:shadow-md transition-all text-left"
+      >
+        <p className="text-xs text-gray-500 line-clamp-2 mb-1.5 pr-4">{item.text}</p>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-blue-600 truncate max-w-[100px]">{label}...</span>
+          <span className="text-xs text-gray-300">{date}</span>
+        </div>
+      </button>
+
+      {/* Hover overlay with preview */}
+      {hover && (
+        <div className="absolute top-0 left-0 right-0 z-10 bg-white rounded-xl border border-blue-300 shadow-lg p-3 text-left pointer-events-none">
+          <p className="text-xs text-gray-500 line-clamp-3 mb-2">{item.text}</p>
+          <p className="text-xs font-medium text-blue-600">{label}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{date}</p>
+        </div>
+      )}
+
+      {/* Delete button */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+        className="absolute top-2 right-2 w-5 h-5 rounded-full bg-gray-200 hover:bg-red-100 text-gray-400 hover:text-red-500 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+        title="删除"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 function HistoryPanel({
   open,
   onToggle,
   items,
   onRestore,
+  onDelete,
+  onClearAll,
 }: {
   open: boolean;
   onToggle: () => void;
   items: HistoryItem[];
   onRestore: (item: HistoryItem) => void;
+  onDelete: (id: string) => void;
+  onClearAll: () => void;
 }) {
   if (!open) return null;
 
   return (
     <div className="border-t border-gray-100 bg-gray-50/50 p-4">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-semibold text-gray-400 uppercase">历史记录</p>
-        <button onClick={onToggle} className="text-xs text-gray-400 hover:text-gray-600">收起 ▲</button>
+        <p className="text-xs font-semibold text-gray-400 uppercase">
+          历史记录 <span className="text-gray-300 font-normal">({items.length})</span>
+        </p>
+        <div className="flex items-center gap-2">
+          {items.length > 0 && (
+            <button
+              onClick={onClearAll}
+              className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+              title="清空全部"
+            >
+              清空
+            </button>
+          )}
+          <button onClick={onToggle} className="text-xs text-gray-400 hover:text-gray-600">收起 ▲</button>
+        </div>
       </div>
       {items.length === 0 ? (
         <p className="text-xs text-gray-400 text-center py-4">暂无历史记录</p>
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-1">
           {items.map((item) => (
-            <button
+            <HistoryItemCard
               key={item.id}
-              onClick={() => onRestore(item)}
-              className="shrink-0 w-48 p-3 bg-white rounded-xl border border-gray-100 hover:border-blue-200 hover:shadow-sm transition-all text-left"
-            >
-              <p className="text-xs text-gray-500 line-clamp-2 mb-1.5">{item.text}</p>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-blue-600">{item.result.comedy_type || item.result.theme_refined?.slice(0, 20) || '已分析'}...</span>
-                <span className="text-xs text-gray-300">
-                  {new Date(item.timestamp).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}
-                </span>
-              </div>
-            </button>
+              item={item}
+              onRestore={onRestore}
+              onDelete={onDelete}
+            />
           ))}
         </div>
       )}
@@ -570,11 +631,11 @@ function StreamingResultCard({
   if (!r) return null;
 
   // P1 衍生数据计算
-  const topProblems = r.segments
+  const topProblems = (r.segments ?? [])
     .filter((s) => s.problem)
     .slice(0, 3)
     .map((s) => s.problem);
-  const effectiveSegments = r.segments.filter((s) => !s.problem && s.text.trim().length > 10);
+  const effectiveSegments = (r.segments ?? []).filter((s) => !s.problem && s.text.trim().length > 10);
   const effectiveJokes = effectiveSegments.slice(0, 3).map((s) => s.text.trim());
   const getVerdict = () => {
     if (r.comedy_type && r.premise) {
@@ -633,13 +694,13 @@ function StreamingResultCard({
               </div>
             </div>
           )}
-          {r.techniques.length > 0 && (
+          {(r.techniques ?? []).length > 0 && (
             <div className="flex items-start gap-2">
               <span className="text-blue-500 mt-0.5">🎯</span>
               <div>
                 <p className="text-sm font-medium text-gray-600 mb-1">技巧</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {r.techniques.map((t) => (
+                  {(r.techniques ?? []).map((t) => (
                     <span key={t} className="text-sm px-2.5 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">{esc(t)}</span>
                   ))}
                 </div>
@@ -693,11 +754,11 @@ function StreamingResultCard({
       )}
 
       {/* Segments */}
-      {r.segments.length > 0 && (
+      {(r.segments ?? []).length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
           <p className="text-sm font-semibold text-gray-700 mb-3">段落拆解</p>
           <div className="space-y-3">
-            {r.segments.map((seg, i) => (
+            {(r.segments ?? []).map((seg, i) => (
               <div key={i} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                   <span className="text-sm px-2.5 py-1 bg-blue-100 text-blue-700 rounded-lg font-bold">{structureLabel(seg.structure)}</span>
@@ -877,6 +938,7 @@ export default function WritePage() {
   }, []);
 
   const saveHistory = (item: HistoryItem) => {
+    if (!item.result) return; // Don't save failed/incomplete results
     setHistory((prev) => {
       const filtered = prev.filter((h) => h.id !== item.id);
       const next = [item, ...filtered].slice(0, 20);
@@ -1009,7 +1071,7 @@ export default function WritePage() {
 
 
             const histItem: HistoryItem = {
-              id: Date.now().toString(),
+              id: crypto.randomUUID(),
               text: inputText.slice(0, 100),
               result,
               timestamp: Date.now(),
@@ -1058,7 +1120,8 @@ export default function WritePage() {
   };
 
   const handleRestore = (item: HistoryItem) => {
-    setInputText(item.text);
+    if (!item || !item.result) return;
+    setInputText(item.text ?? '');
     setStream({
       phase: "done",
       rawTokens: "",
@@ -1068,6 +1131,20 @@ export default function WritePage() {
       sessionId: "",
       feedbackSent: null,
     });
+  };
+
+  const deleteHistory = (id: string) => {
+    setHistory((prev) => {
+      const next = prev.filter((h) => h.id !== id);
+      try { localStorage.setItem("comedy_history", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const clearAllHistory = () => {
+    if (!confirm('确定清空全部历史记录？')) return;
+    setHistory([]);
+    try { localStorage.removeItem("comedy_history"); } catch {}
   };
 
   const [contentWarning, setContentWarning] = useState<string | null>(null);
@@ -1103,10 +1180,10 @@ export default function WritePage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
               <rect width="32" height="32" rx="8" fill="#6366f1"/>
               <ellipse cx="16" cy="12" rx="6" ry="8" fill="white"/>
               <rect x="13" y="20" width="6" height="6" rx="1" fill="white"/>
@@ -1114,23 +1191,23 @@ export default function WritePage() {
               <rect x="10" y="8" width="12" height="3" rx="1.5" fill="none" stroke="white" stroke-width="1.5"/>
             </svg>
             <div>
-              <h1 className="text-xl font-bold text-gray-800">喜剧写稿台</h1>
-              <p className="text-xs text-gray-500 mt-0.5">分析你的段子，发现提升空间</p>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-800">喜剧写稿台</h1>
+              <p className="text-xs text-gray-500 mt-0.5 hidden sm:block">分析你的段子，发现提升空间</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => setHistoryOpen((v) => !v)}
-              className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
+              className="text-xs sm:text-sm text-gray-400 hover:text-gray-700 transition-colors"
             >
-              {historyOpen ? "收起历史" : `📋 历史(${history.length})`}
+              {historyOpen ? "收起" : `📋 ${history.length}`}
             </button>
             <button
               onClick={() => setCmdKOpen(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm text-gray-600 transition-colors"
+              className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs sm:text-sm text-gray-600 transition-colors"
             >
               <span>⌘K</span>
-              <span>素材库</span>
+              <span className="hidden sm:inline">素材库</span>
             </button>
           </div>
         </div>
@@ -1142,11 +1219,13 @@ export default function WritePage() {
         onToggle={() => setHistoryOpen(false)}
         items={history}
         onRestore={handleRestore}
+        onDelete={deleteHistory}
+        onClearAll={clearAllHistory}
       />
 
       {/* Main Content */}
-      <main className="flex-1 max-w-6xl mx-auto w-full p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <main className="flex-1 max-w-6xl mx-auto w-full p-4 sm:p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
           {/* Left: Input */}
           <div className="space-y-4">
             {/* 1.1 标题与副标题 */}
@@ -1185,7 +1264,7 @@ export default function WritePage() {
                 value={inputText}
                 onChange={(e) => { setInputText(e.target.value); setContentWarning(checkContentQuality(e.target.value)); }}
                 placeholder="把你不确定好不好笑的段子贴进来"
-                className="w-full px-5 py-4 text-sm text-gray-700 placeholder-gray-300 resize-none outline-none min-h-64"
+                className="w-full px-4 sm:px-5 py-3 sm:py-4 text-base text-gray-700 placeholder-gray-300 resize-none outline-none min-h-48 sm:min-h-64"
                 style={{ fontFamily: "inherit" }}
                 disabled={isStreaming}
               />
@@ -1250,13 +1329,13 @@ export default function WritePage() {
                   const r = stream.result!;
                   const lines = [
                     ...(r.comedy_type ? [`🎭 类型：${r.comedy_type}`] : []),
-                    `✅ 结构：${r.structures}`,
-                    `🎯 技巧：${r.techniques.join('、')}`,
+                    `✅ 结构：${r.structures ?? ''}`,
+                    `🎯 技巧：${(r.techniques ?? []).join('、')}`,
                     r.premise ? `💡 前提：${r.premise}` : '',
                     r.theme_refined ? `🏷️ 主题：${r.theme_refined}` : '',
                     '',
                     '--- 段落拆解 ---',
-                    ...r.segments.map((s) =>
+                    ...(r.segments ?? []).map((s) =>
                       `[${s.structure}]${s.attitude ? ` ${s.attitude}` : ''}${s.theme ? ` | 主题: ${s.theme}` : ''}${s.problem ? ` | 问题: ${s.problem}` : ''}
 ${s.text}`
                     ),
