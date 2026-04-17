@@ -190,6 +190,12 @@ export default function JokeToPremiseTab({ onAction }: { onAction?: (action: str
             placeholder={"输入一句你觉得好笑的梗……\n\n📝 示例：\n• 成年人的崩溃都很懂事，连死机都先点保存\n• 我不是自律，我只是穷得没有试错空间\n• 恋爱像产品经理开需求会，流程完整，结果都不满意"}
             className="w-full h-36 p-4 text-base border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             disabled={isStreaming}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                handleGenerate();
+              }
+            }}
           />
 
           {/* Options row */}

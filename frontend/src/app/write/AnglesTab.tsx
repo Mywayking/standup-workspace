@@ -32,6 +32,8 @@ function esc(s: unknown): string {
     .replace(/&#39;/g, "'");
 }
 
+const GUIDE_TEXT = "有一个前提，想看看有没有更新鲜的切入角度？";
+
 export default function AnglesTab({ onAction, initialData, onClearPending }: { onAction?: (action: string, data?: string) => void; initialData?: string; onClearPending?: () => void }) {
   const [inputText, setInputText] = useState(initialData ?? "");
   const [stream, setStream] = useState<StreamingState>({
@@ -48,7 +50,11 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
   const [history, setHistory] = useState<{ id: string; premise: string; result: AnglesResult }[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
+  // Copy feedback state
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
   const autoTriggered = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     try {
@@ -61,16 +67,18 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
   useEffect(() => {
     if (initialData && !autoTriggered.current) {
       autoTriggered.current = true;
+      setInputText(initialData);
       const timer = setTimeout(() => {
-        if (inputText.trim().length >= 5) {
-          // Use React ref + dispatchEvent for reliability in all environments
-          const btn = window.document.querySelector('button[class*="bg-blue"]') as HTMLButtonElement | null;
-          if (btn) btn.click();
+        // Use the textarea ref + form submit instead of DOM query
+        const form = textareaRef.current?.closest("form");
+        const formSubmit = form?.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+        if (formSubmit && !formSubmit.disabled) {
+          formSubmit.click();
         }
-      }, 800);
+      }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [initialData, inputText]);
+  }, [initialData]);
 
   const handleRestore = useCallback((item: { id: string; premise: string; result: AnglesResult }) => {
     setInputText(item.premise);
@@ -79,7 +87,7 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
     onClearPending?.();
   }, []);
 
-  const canAnalyze = inputText.trim().length >= 3;
+  const canAnalyze = inputText.trim().length >= 5;
 
   const handleAnalyze = useCallback(async () => {
     if (!canAnalyze || stream.phase === "thinking") return;
@@ -181,24 +189,36 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
   const raw = stream.displayText ?? "";
   const cleaned = raw.replace(/[{}\[\]"":\\]/g, "").replace(/\n/g, " ").replace(/,{2,}/g, " ").replace(/\s{2,}/g, " ").trim();
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      handleAnalyze();
+    }
+  }, [handleAnalyze]);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Left: Input */}
       <div className="lg:col-span-2 space-y-4">
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+          {/* Guiding text */}
+          <p className="text-sm text-gray-500 mb-3 leading-relaxed">
+            💡 {GUIDE_TEXT}
+          </p>
+
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-800">找角度</h2>
             <button
               onClick={() => setShowHistory(!showHistory)}
               className="text-sm text-blue-600 hover:text-blue-700 font-medium"
             >
-              {showHistory ? "收起历史" : "查看历史"}
+              {showHistory ? "收起历史" : "📋 查看历史"}
             </button>
           </div>
 
           {showHistory && history.length > 0 && (
             <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-100 max-h-60 overflow-y-auto">
-              <p className="text-xs text-gray-400 mb-2 font-medium">最近角度</p>
+              <p className="text-xs text-gray-400 mb-2 font-medium">📋 你之前找过的角度</p>
               <div className="space-y-1">
                 {history.map((item) => (
                   <button
@@ -213,23 +233,40 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
             </div>
           )}
 
-          <textarea
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder={"输入一个已有的喜剧前提……\n\n例如：成年人的'都行'，其实是不想承担责任。\n或者：相亲像面试。"}
-            className="w-full h-40 p-4 text-base border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            disabled={isStreaming}
-          />
-          <div className="flex items-center justify-between mt-3">
-            <span className="text-xs text-gray-400">{inputText.length} 字符</span>
-            <button
-              onClick={handleAnalyze}
-              disabled={!canAnalyze || isStreaming}
-              className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {isStreaming ? "分析中..." : "开始找角度"}
-            </button>
-          </div>
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleAnalyze(); }}
+          >
+            <textarea
+              ref={textareaRef}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={"输入一个已有的喜剧前提……\n\n例如：成年人的'都行'，其实是不想承担责任。\n或者：相亲像面试。"}
+              className="w-full h-40 p-4 text-base border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={isStreaming}
+            />
+            <div className="flex items-center justify-between mt-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">
+                  {inputText.length > 0 ? `已输入 ${inputText.length} 字` : "请输入前提"}
+                </span>
+                {inputText.length > 0 && inputText.length < 5 && (
+                  <span className="text-xs text-amber-500">至少 5 字可开始，建议 10–100 字</span>
+                )}
+                {inputText.length >= 5 && (
+                  <span className="text-xs text-green-500">✓ 可以开始找角度</span>
+                )}
+              </div>
+              <button
+                type="submit"
+                disabled={!canAnalyze || isStreaming}
+                className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isStreaming ? "分析中..." : "开始找角度"}
+              </button>
+            </div>
+          </form>
+          <p className="text-xs text-gray-300 mt-1.5">⌘ + Enter 快捷提交</p>
         </div>
 
         {/* Streaming */}
@@ -261,7 +298,9 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
           </div>
         )}
 
-        {hasResult && stream.result && <AnglesResultView result={stream.result} onAction={onAction} />}
+        {hasResult && stream.result && (
+          <AnglesResultView result={stream.result} onAction={onAction} copiedId={copiedId} onCopy={(id) => { setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); }} />
+        )}
       </div>
 
       {/* Right: Intro */}
@@ -291,7 +330,9 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
   );
 }
 
-function AnglesResultView({ result, onAction }: { result: AnglesResult; onAction?: (action: string, data?: string) => void }) {
+function AnglesResultView({ result, onAction, copiedId, onCopy }: { result: AnglesResult; onAction?: (action: string, data?: string) => void; copiedId: string | null; onCopy: (id: string) => void }) {
+  const [expandedAngle, setExpandedAngle] = useState<number | null>(null);
+
   return (
     <div className="space-y-4">
       {/* Current problem */}
@@ -311,29 +352,43 @@ function AnglesResultView({ result, onAction }: { result: AnglesResult; onAction
 
       {/* Angles */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-        <p className="text-sm font-semibold text-gray-700 mb-3">新角度（6条）</p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-gray-700">新角度（6条）</p>
+        </div>
         <div className="space-y-3">
           {(result.angles ?? []).map((angle, i) => (
-            <div key={i} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-              <div className="flex items-center gap-2 mb-2">
+            <div
+              key={i}
+              className={`p-4 rounded-xl border transition-colors cursor-pointer ${
+                expandedAngle === i ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-100 hover:border-blue-200"
+              }`}
+              onClick={() => setExpandedAngle(expandedAngle === i ? null : i)}
+            >
+              <div className="flex items-center gap-2 mb-1">
                 <span className="text-xs font-bold text-blue-600">{i + 1}</span>
                 <span className="text-sm font-semibold text-gray-800">{esc(angle.name)}</span>
+                {expandedAngle !== i && (
+                  <span className="ml-auto text-xs text-gray-400">点击展开</span>
+                )}
               </div>
-              <p className="text-base font-medium text-gray-900 mb-2">{esc(angle.premise)}</p>
-              <div className="grid grid-cols-3 gap-2 text-xs text-gray-500">
-                <div>
-                  <span className="font-medium text-gray-400">展开：</span>
-                  <span>{esc(angle.expansion_idea)}</span>
+              <p className="text-base font-medium text-gray-900">{esc(angle.premise)}</p>
+
+              {expandedAngle === i && (
+                <div className="mt-3 pt-3 border-t border-blue-100 grid grid-cols-3 gap-2 text-xs text-gray-500">
+                  <div>
+                    <span className="font-medium text-gray-400 block mb-0.5">展开方向</span>
+                    <span>{esc(angle.expansion_idea)}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-400 block mb-0.5">适合场景</span>
+                    <span>{esc(angle.scene_direction)}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-400 block mb-0.5">结尾方向</span>
+                    <span>{esc(angle.ending_direction)}</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="font-medium text-gray-400">场景：</span>
-                  <span>{esc(angle.scene_direction)}</span>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-400">结尾：</span>
-                  <span>{esc(angle.ending_direction)}</span>
-                </div>
-              </div>
+              )}
             </div>
           ))}
         </div>
@@ -346,21 +401,28 @@ function AnglesResultView({ result, onAction }: { result: AnglesResult; onAction
             <span className="text-sm font-bold text-purple-700">⭐ 推荐角度</span>
             <span className="text-xs px-2 py-0.5 bg-purple-200 text-purple-800 rounded font-medium">{esc(result.recommendation.name)}</span>
           </div>
-          <p className="text-sm text-gray-600">{esc(result.recommendation.reason)}</p>
+          <p className="text-sm text-gray-600 mb-3">{esc(result.recommendation.reason)}</p>
+
+          {/* Copy the recommended premise */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                onCopy("rec");
+                navigator.clipboard.writeText(result.recommendation.name).catch(() => {});
+              }}
+              className="px-3 py-1.5 bg-white border border-purple-200 text-purple-700 text-xs font-medium rounded-lg hover:bg-purple-50 transition-colors flex items-center gap-1"
+            >
+              {copiedId === "rec" ? "✅ 已复制" : "📋 复制角度"}
+            </button>
+            <button
+              onClick={() => onAction?.("go-rewrite", result.recommendation.name)}
+              className="px-4 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              ✏️ 用这个角度改稿
+            </button>
+          </div>
         </div>
       )}
-
-      {/* Action buttons */}
-      {result.recommendation && result.recommendation.name ? (
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => onAction?.("go-rewrite", result.recommendation.name)}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            ✏️ 用这个角度改稿
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

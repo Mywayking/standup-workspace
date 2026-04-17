@@ -39,7 +39,7 @@ export default function WriteTabs() {
               { key: "premise", label: "提炼前提", desc: "素材 → 前提" },
               { key: "joke_to_premise", label: "梗写前提", desc: "梗 → 前提" },
               { key: "angles", label: "找角度", desc: "前提 → 角度" },
-              { key: "rewrite", label: "改稿", desc: "分析整段" },
+              { key: "rewrite", label: "改稿", desc: "草稿 → 成品" },
             ].map(({ key, label, desc }) => (
               <button
                 key={key}

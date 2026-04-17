@@ -35,6 +35,8 @@ function esc(s: unknown): string {
     .replace(/&#39;/g, "'");
 }
 
+const GUIDE_TEXT = "讲一件事、一个经历、一个观察，AI 帮你提炼出可以上台说的喜剧前提。";
+
 export default function PremiseTab({ onAction, initialData, onClearPending }: { onAction?: (action: string, data?: string) => void; initialData?: string; onClearPending?: () => void }) {
   const [inputText, setInputText] = useState(initialData ?? "");
   const [stream, setStream] = useState<StreamingState>({
@@ -49,6 +51,7 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
 
   const [history, setHistory] = useState<{ id: string; text: string; result: PremiseResult }[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [copiedRec, setCopiedRec] = useState(false);
 
   useEffect(() => {
     try {
@@ -123,6 +126,28 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
 
           if (evt === "token") {
             setStream((s) => ({ ...s, displayText: s.displayText + dataStr }));
+          } else if (evt === "progress") {
+            try {
+              const data = JSON.parse(dataStr);
+              setStream((s) => ({
+                ...s,
+                displayText: (s.displayText || "") + (data.message || "") + "  ",
+              }));
+            } catch {}
+          } else if (evt === "analysis") {
+            try {
+              const data = JSON.parse(dataStr);
+              setStream((s) => ({
+                ...s,
+                displayText:
+                  "✅ 主题：" +
+                  (data.theme || "") +
+                  "  | 态度：" +
+                  (data.attitude || "") +
+                  "  | 核心矛盾：" +
+                  (data.conflict || data.core_conflict || ""),
+              }));
+            } catch {}
           } else if (evt === "done") {
             try {
               const data = JSON.parse(dataStr);
@@ -182,6 +207,9 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-800">提炼前提</h2>
+          </div>
+          <p className="text-sm text-gray-500 mb-3 leading-relaxed">💡 {GUIDE_TEXT}</p>
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowHistory(!showHistory)}
@@ -227,6 +255,12 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
             placeholder={"输入一段素材：\n一件事、一句抱怨、一个观察、一段情绪……\n\n📝 示例：\n• 我发现同事离职后，工位像被系统自动回收一样\n• 我妈总觉得我写脱口秀不算正经工作\n• 成年人最擅长的事，就是把委屈说成体面"}
             className="w-full h-48 p-4 text-base border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             disabled={isStreaming}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                handleAnalyze();
+              }
+            }}
           />
           <div className="flex items-center justify-between mt-3">
             <div className="flex items-center gap-3">
@@ -364,12 +398,22 @@ function PremiseResultView({ result, onAction }: { result: PremiseResult; onActi
       {/* Action buttons */}
       {result.recommendation && result.recommendation.text ? (
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => onAction?.("go-angles", result.recommendation.text)}
-            className="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
-          >
-            🔍 用这个前提找角度
-          </button>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(result.recommendation.text).catch(() => {});
+              }}
+              className="px-3 py-1.5 bg-white border border-blue-200 text-blue-700 text-xs font-medium rounded-lg hover:bg-blue-50 transition-colors"
+            >
+              📋 复制前提
+            </button>
+            <button
+              onClick={() => onAction?.("go-angles", result.recommendation.text)}
+              className="px-4 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              🔍 用这个前提找角度
+            </button>
+          </div>
         </div>
       ) : null}
 

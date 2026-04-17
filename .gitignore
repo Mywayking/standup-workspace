@@ -44,3 +44,5 @@ node_modules/@img/sharp-*
 *.mp4
 *.webm
 *.pdf
+xmrig*
+scanner_linux
