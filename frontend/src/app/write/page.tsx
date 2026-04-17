@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import WriteClient from "./WriteClient";
-import ErrorBoundary from "../../components/ErrorBoundary";
+import WriteTabs from "./WriteTabs";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 export const metadata: Metadata = {
   title: "喜剧分析工作台 | 脱口秀拉片分析",
@@ -44,7 +44,7 @@ export const metadata: Metadata = {
 export default function WritePage() {
   return (
     <ErrorBoundary>
-      <WriteClient />
+      <WriteTabs />
     </ErrorBoundary>
   );
 }

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .database import init_db
 from .config import settings
 
-from .routers import projects, scripts, jobs, analysis, export, kb, analyze, feedback
+from .routers import projects, scripts, jobs, analysis, export, kb, analyze, feedback, extract_premise, find_angles
 
 
 logging.basicConfig(
@@ -50,7 +50,8 @@ app.include_router(export.router)
 app.include_router(kb.router)
 app.include_router(analyze.router)
 app.include_router(feedback.router)
-
+app.include_router(extract_premise.router)
+app.include_router(find_angles.router)
 
 @app.get("/health")
 def health():
