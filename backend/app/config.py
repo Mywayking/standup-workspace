@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     s3_secret_key: Optional[str] = None
     cors_origins: list[str] = ["http://localhost:3000"]
     deepseek_api_key: str = ""
+    kb_dir: str = "/var/www/alwayshaha/comedy-kb/data"
     glm5_api_key: str = ""
 
 

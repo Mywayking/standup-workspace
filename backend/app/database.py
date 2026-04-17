@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import Generator
 
 from sqlalchemy import create_engine, event, Column, Integer, String, Text, DateTime, ForeignKey, JSON, Float
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship
+from sqlalchemy.orm import sessionmaker, Session, relationship, declarative_base
 from datetime import datetime
 
 from .config import settings
@@ -21,6 +20,12 @@ if settings.database_url.startswith("sqlite"):
         connect_args={"check_same_thread": False},
         echo=False,
     )
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 else:
     engine = create_engine(settings.database_url, echo=False)
 

@@ -502,6 +502,8 @@ async def analyze_stream(req: AnalyzeRequest):
                 "next_suggestion": result.get("next_suggestion", ""),
             }
             yield "event: done\ndata: " + _json.dumps(final) + "\n\n"
+        else:
+            yield "event: error\ndata: " + _json.dumps({"error": "解析失败，请稍后重试", "request_id": request_id}) + "\n\n"
 
 
     return StreamingResponse(
@@ -514,37 +516,6 @@ async def analyze_stream(req: AnalyzeRequest):
     )
 
 
-def _call_deepseek_sync(user_prompt: str, api_key: str) -> dict:
-    """Synchronous httpx call (fallback for non-streaming)."""
-    import httpx as _httpx
-    with _httpx.Client(timeout=_httpx.Timeout(150.0)) as client:
-        r = client.post(
-            "https://api.deepseek.com/chat/completions",
-            json={
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0.2,
-                "max_tokens": 6000,
-            },
-            headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
-        )
-        r.raise_for_status()
-        resp_content = r.json()["choices"][0]["message"]["content"]
-        result = _extract_json(resp_content)
-        if not result:
-            first_brace = resp_content.find("{")
-            last_brace = resp_content.rfind("}")
-            if first_brace >= 0 and last_brace > first_brace:
-                try:
-                    import json as _j
-                    return _j.loads(resp_content[first_brace:last_brace + 1])
-                except Exception:
-                    pass
-            return {"error": "Parse Failed: " + resp_content[:150], "raw_content": resp_content}
-        return result
 
 
 def _call_deepseek_sync(user_prompt: str, api_key: str) -> dict:

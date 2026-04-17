@@ -16,10 +16,21 @@ def list_scripts(
     if project_id is not None:
         q = q.filter(Script.project_id == project_id)
     scripts = q.order_by(Script.updated_at.desc()).all()
+
+    # Batch load counts (fixes N+1)
+    script_ids = [s.id for s in scripts]
+    seg_counts = dict(
+        db.query(Segment.script_id, func.count(Segment.id))
+        .filter(Segment.script_id.in_(script_ids))
+        .group_by(Segment.script_id).all()
+    )
+    has_reports = set(
+        r[0] for r in db.query(ScriptReport.script_id)
+        .filter(ScriptReport.script_id.in_(script_ids)).all()
+    )
+
     result = []
     for s in scripts:
-        seg_count = db.query(Segment).filter(Segment.script_id == s.id).count()
-        has_report = db.query(ScriptReport).filter(ScriptReport.script_id == s.id).first() is not None
         result.append(ScriptOut(
             id=s.id,
             project_id=s.project_id,
@@ -27,8 +38,8 @@ def list_scripts(
             actor_name=s.actor_name or "",
             show_name=s.show_name or "",
             title=s.title or "",
-            segment_count=seg_count,
-            has_report=has_report,
+            segment_count=seg_counts.get(s.id, 0),
+            has_report=s.id in has_reports,
             created_at=s.created_at,
             updated_at=s.updated_at,
         ))

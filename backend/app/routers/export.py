@@ -170,11 +170,26 @@ def _build_docx_export(script: Script, segments: list, analyses: dict, report) -
 
 
 @router.post("/{script_id}/export")
-def export_script(
+def export_script_post(
     script_id: int,
     data: ExportRequest,
     db: Session = Depends(get_db),
 ):
+    return _do_export(script_id, data.format, data.include_raw, data.include_analysis, db)
+
+
+@router.get("/{script_id}/export")
+def export_script_get(
+    script_id: int,
+    format: str = "json",
+    include_raw: bool = True,
+    include_analysis: bool = True,
+    db: Session = Depends(get_db),
+):
+    return _do_export(script_id, format, include_raw, include_analysis, db)
+
+
+def _do_export(script_id: int, fmt: str, include_raw: bool, include_analysis: bool, db: Session):
     script = db.query(Script).filter(Script.id == script_id).first()
     if not script:
         raise HTTPException(404, "Script not found")
@@ -192,7 +207,7 @@ def export_script(
     import urllib.parse
     safe_name = urllib.parse.quote(filename_base)
 
-    if data.format == "json":
+    if fmt == "json":
         payload = _build_json_export(script, segments, analyses, report)
         content = json.dumps(payload, ensure_ascii=False, indent=2)
         return StreamingResponse(
@@ -201,7 +216,7 @@ def export_script(
             headers={"Content-Disposition": f'attachment; filename="{safe_name}.json"; filename*=UTF-8\'\'{safe_name}.json'},
         )
 
-    elif data.format == "md":
+    elif fmt == "md":
         content = _build_md_export(script, segments, analyses, report)
         return StreamingResponse(
             io.StringIO(content),
@@ -209,7 +224,7 @@ def export_script(
             headers={"Content-Disposition": f'attachment; filename="{safe_name}.md"; filename*=UTF-8\'\'{safe_name}.md'},
         )
 
-    elif data.format == "docx":
+    elif fmt == "docx":
         content = _build_docx_export(script, segments, analyses, report)
         return StreamingResponse(
             io.BytesIO(content),

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 
 from ..database import get_db, Script, Segment, SegmentAnalysis, ScriptReport, Project
 from ..schemas import (
@@ -17,11 +18,19 @@ def get_script_analysis(script_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Script not found")
 
     segments = db.query(Segment).filter(Segment.script_id == script_id).order_by(Segment.index).all()
-    seg_outs = []
-    starred_count = 0
 
+    # Batch load SegmentAnalysis (fixes N+1)
+    seg_ids = [s.id for s in segments]
+    analyses_map = {}
+    if seg_ids:
+        analyses = db.query(SegmentAnalysis).filter(SegmentAnalysis.segment_id.in_(seg_ids)).all()
+        for a in analyses:
+            analyses_map[a.segment_id] = a
+
+    starred_count = 0
+    seg_outs = []
     for seg in segments:
-        analysis = db.query(SegmentAnalysis).filter(SegmentAnalysis.segment_id == seg.id).first()
+        analysis = analyses_map.get(seg.id)
         starred = bool(analysis.starred) if analysis else False
         if starred:
             starred_count += 1
@@ -150,11 +159,18 @@ def filter_segments(data: FilterRequest, db: Session = Depends(get_db)):
         q = q.filter(Segment.script_id == data.script_id)
 
     segments = q.all()
-    results = []
 
+    # Batch load all SegmentAnalysis (fixes N+1)
+    seg_ids = [s.id for s in segments]
+    analyses_map = {}
+    if seg_ids:
+        analyses = db.query(SegmentAnalysis).filter(SegmentAnalysis.segment_id.in_(seg_ids)).all()
+        for a in analyses:
+            analyses_map[a.segment_id] = a
+
+    results = []
     for seg in segments:
-        # Filter by segment analysis fields
-        analysis = db.query(SegmentAnalysis).filter(SegmentAnalysis.segment_id == seg.id).first()
+        analysis = analyses_map.get(seg.id)
 
         if data.starred_only:
             if not analysis or not analysis.starred:

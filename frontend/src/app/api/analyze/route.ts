@@ -34,10 +34,11 @@ export async function POST(req: NextRequest) {
       // Backend score is 0-1, frontend expects 0-100
       score: Math.round((data.overall_score ?? data.score ?? 0.5) * 100),
       structure: data.structures ?? "",
-      techniques: (data.techniques ?? "")
-        .split(",")
-        .map((t: string) => t.trim())
-        .filter(Boolean),
+      techniques: (Array.isArray(data.techniques)
+        ? data.techniques
+        : (typeof data.techniques === "string"
+          ? data.techniques.split(",").map((t: string) => t.trim()).filter(Boolean)
+          : [])),
       feedback: parts.length > 0 ? parts.join("\n") : fallbackFeedback,
       segments: (data.segments ?? []).map((s: {
         text: string;

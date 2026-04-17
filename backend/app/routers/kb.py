@@ -16,9 +16,11 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/kb", tags=["knowledge_base"])
 
-KB_DIR = "/var/www/alwayshaha/comedy-kb/data"
-SEGMENTS_FILE = os.path.join(KB_DIR, "segments.jsonl")
-MANIFEST_FILE = os.path.join(KB_DIR, "manifest.json")
+from ..config import settings
+
+_KB_DIR = getattr(settings, "kb_dir", "/var/www/alwayshaha/comedy-kb/data")
+SEGMENTS_FILE = os.path.join(_KB_DIR, "segments.jsonl")
+MANIFEST_FILE = os.path.join(_KB_DIR, "manifest.json")
 
 
 # ─── Types ────────────────────────────────────────────────────────────────────
@@ -61,6 +63,9 @@ class KbStatsResponse(BaseModel):
 
 @lru_cache(maxsize=1)
 def _load_manifest() -> dict:
+    if not os.path.exists(MANIFEST_FILE):
+        logger.warning(f"[KB] Manifest file not found: {MANIFEST_FILE}")
+        return {}
     with open(MANIFEST_FILE, encoding="utf-8") as f:
         return json.load(f)
 
@@ -68,6 +73,9 @@ def _load_manifest() -> dict:
 @lru_cache(maxsize=1)
 def _load_all_segments() -> list[dict]:
     """Load all KB segments into memory (~26MB)."""
+    if not os.path.exists(SEGMENTS_FILE):
+        logger.warning(f"[KB] Segments file not found: {SEGMENTS_FILE}")
+        return []
     segments = []
     with open(SEGMENTS_FILE, encoding="utf-8") as f:
         for line in f:
