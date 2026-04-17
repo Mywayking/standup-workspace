@@ -87,7 +87,9 @@ interface HistoryItem {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function esc(s: string): string {
+function esc(s: unknown): string {
+  if (s == null) return '';
+  return String(s)
   return String(s)
     // Decode existing HTML entities first to avoid double-escaping
     .replace(/&amp;/g, '&')
@@ -155,7 +157,8 @@ function techExplain(t: string) {
   return TECH_EXPLAIN[key] || TECH_EXPLAIN[t] || null;
 }
 
-function structureLabel(s: string) {
+function structureLabel(s: unknown): string {
+  if (typeof s !== 'string') return '未知';
   const map: Record<string, string> = {
     setup: "铺垫",
     buildup: "递进",
@@ -752,7 +755,7 @@ function StreamingResultCard({
               <div>
                 <p className="text-sm font-medium text-gray-600 mb-1">人设</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {r.performer_tags.map((tag) => (
+                  {(r.performer_tags ?? []).map((tag) => (
                     <span key={"performer:" + tag} className="text-sm px-2.5 py-0.5 bg-purple-100 text-purple-700 rounded-full font-medium">{esc(tag)}</span>
                   ))}
                 </div>
@@ -802,7 +805,7 @@ function StreamingResultCard({
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                   <span className="text-sm px-2.5 py-1 bg-blue-100 text-blue-700 rounded-lg font-bold">{structureLabel(seg.structure)}</span>
                   {seg.attitude && <span className="text-sm px-2.5 py-1 bg-orange-100 text-orange-700 rounded-lg font-medium">态度: {esc(seg.attitude)}</span>}
-                  {seg.techniques.map((t) => (
+                  {(seg.techniques ?? []).map((t) => (
                     <span key={t} className="text-sm px-2 py-0.5 bg-green-100 text-green-700 rounded font-medium">{t}</span>
                   ))}
                 </div>
@@ -826,7 +829,7 @@ function StreamingResultCard({
       )}
 
       {/* 2.4 改写建议（升级版）*/}
-      {r.script_changes.length > 0 && (
+      {(r.script_changes ?? []).length > 0 && (
         <div className="bg-white rounded-2xl border border-orange-200 shadow-sm p-5">
           <p className="text-sm font-bold text-gray-800 mb-3">✏️ 直接替换建议</p>
           <div className="space-y-4">
@@ -855,7 +858,7 @@ function StreamingResultCard({
       )}
 
       {/* Style Hints */}
-      {r.style_hints.length > 0 && (
+      {(r.style_hints ?? []).length > 0 && (
         <div className="bg-white rounded-2xl border border-purple-100 shadow-sm p-5">
           <p className="text-sm font-semibold text-gray-700 mb-2">💅 风格提示</p>
           <div className="flex flex-wrap gap-1.5">
@@ -962,8 +965,34 @@ export default function WritePage() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem("comedy_history");
-      if (raw) setHistory(JSON.parse(raw));
-    } catch {}
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          // Filter out any items with invalid result structure
+          const valid = parsed.filter((item: any) => {
+            if (!item || typeof item !== 'object') return false;
+            if (!item.result || typeof item.result !== 'object') return false;
+            // Basic sanity check - must have at least one string field
+            const r = item.result;
+            return (
+              typeof r.comedy_type === 'string' ||
+              typeof r.premise === 'string' ||
+              typeof r.theme_refined === 'string' ||
+              Array.isArray(r.techniques) ||
+              Array.isArray(r.segments)
+            );
+          });
+          setHistory(valid);
+          // Rewrite localStorage if we filtered anything out
+          if (valid.length !== parsed.length) {
+            localStorage.setItem("comedy_history", JSON.stringify(valid));
+          }
+        }
+      }
+    } catch (e) {
+      // If localStorage is corrupted, clear it
+      localStorage.removeItem("comedy_history");
+    }
     setHistoryLoading(false);
   }, []);
 
