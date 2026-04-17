@@ -32,8 +32,8 @@ function esc(s: unknown): string {
     .replace(/&#39;/g, "'");
 }
 
-export default function AnglesTab() {
-  const [inputText, setInputText] = useState("");
+export default function AnglesTab({ onAction, initialData, onClearPending }: { onAction?: (action: string, data?: string) => void; initialData?: string; onClearPending?: () => void }) {
+  const [inputText, setInputText] = useState(initialData ?? "");
   const [stream, setStream] = useState<StreamingState>({
     phase: "idle",
     displayText: "",
@@ -59,6 +59,7 @@ export default function AnglesTab() {
     setInputText(item.premise);
     setStream({ phase: "done", displayText: "", result: item.result, error: null });
     setShowHistory(false);
+    onClearPending?.();
   }, []);
 
   const canAnalyze = inputText.trim().length >= 3;
@@ -231,7 +232,7 @@ export default function AnglesTab() {
           </div>
         )}
 
-        {hasResult && stream.result && <AnglesResultView result={stream.result} />}
+        {hasResult && stream.result && <AnglesResultView result={stream.result} onAction={onAction} />}
       </div>
 
       {/* Right: Intro */}
@@ -261,7 +262,7 @@ export default function AnglesTab() {
   );
 }
 
-function AnglesResultView({ result }: { result: AnglesResult }) {
+function AnglesResultView({ result, onAction }: { result: AnglesResult; onAction?: (action: string, data?: string) => void }) {
   return (
     <div className="space-y-4">
       {/* Current problem */}
@@ -319,6 +320,18 @@ function AnglesResultView({ result }: { result: AnglesResult }) {
           <p className="text-sm text-gray-600">{esc(result.recommendation.reason)}</p>
         </div>
       )}
+
+      {/* Action buttons */}
+      {result.recommendation && result.recommendation.name ? (
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => onAction?.("go-rewrite", result.recommendation.name)}
+            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            ✏️ 用这个角度改稿
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

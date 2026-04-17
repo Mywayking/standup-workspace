@@ -10,6 +10,24 @@ type Tab = "premise" | "angles" | "rewrite";
 export default function WriteTabs() {
   const [activeTab, setActiveTab] = useState<Tab>("premise");
 
+  // Shared state for cross-tab data flow
+  const [pendingPremise, setPendingPremise] = useState<string>("");
+  const [pendingAngle, setPendingAngle] = useState<string>("");
+  const [pendingRewrite, setPendingRewrite] = useState<string>("");
+
+  const handleAction = (action: string, data?: string) => {
+    if (action === "go-angles" && data !== undefined) {
+      setPendingAngle(data);
+      setActiveTab("angles");
+    } else if (action === "go-rewrite" && data !== undefined) {
+      setPendingRewrite(data);
+      setActiveTab("rewrite");
+    } else if (action === "go-premise" && data !== undefined) {
+      setPendingPremise(data);
+      setActiveTab("premise");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Tab Bar */}
@@ -41,9 +59,26 @@ export default function WriteTabs() {
       {/* Tab Content */}
       <div className="max-w-6xl mx-auto px-4 py-6">
         <ErrorBoundary>
-          {activeTab === "premise" && <PremiseTab />}
-          {activeTab === "angles" && <AnglesTab />}
-          {activeTab === "rewrite" && <WriteClient />}
+          {activeTab === "premise" && (
+            <PremiseTab
+              onAction={handleAction}
+              initialData={pendingPremise}
+              onClearPending={() => setPendingPremise("")}
+            />
+          )}
+          {activeTab === "angles" && (
+            <AnglesTab
+              onAction={handleAction}
+              initialData={pendingAngle}
+              onClearPending={() => setPendingAngle("")}
+            />
+          )}
+          {activeTab === "rewrite" && (
+            <WriteClient
+              initialText={pendingRewrite}
+              onClearPending={() => setPendingRewrite("")}
+            />
+          )}
         </ErrorBoundary>
       </div>
     </div>

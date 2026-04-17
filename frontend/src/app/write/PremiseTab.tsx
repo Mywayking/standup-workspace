@@ -35,8 +35,8 @@ function esc(s: unknown): string {
     .replace(/&#39;/g, "'");
 }
 
-export default function PremiseTab() {
-  const [inputText, setInputText] = useState("");
+export default function PremiseTab({ onAction, initialData, onClearPending }: { onAction?: (action: string, data?: string) => void; initialData?: string; onClearPending?: () => void }) {
+  const [inputText, setInputText] = useState(initialData ?? "");
   const [stream, setStream] = useState<StreamingState>({
     phase: "idle",
     displayText: "",
@@ -61,6 +61,7 @@ export default function PremiseTab() {
     setInputText(item.text);
     setStream({ phase: "done", displayText: "", result: item.result, error: null });
     setShowHistory(false);
+    onClearPending?.();
   }, []);
 
   const canAnalyze = inputText.trim().length >= 5;
@@ -175,6 +176,18 @@ export default function PremiseTab() {
             >
               {showHistory ? "收起历史" : "查看历史"}
             </button>
+            <button
+              onClick={() => {
+                const url = prompt('输入素材库搜索关键词（可留空查看全部）：');
+                if (url !== null) {
+                  const openUrl = url ? '/kb?q=' + encodeURIComponent(url) : '/kb';
+                  window.open(openUrl, '_blank');
+                }
+              }}
+              className="text-sm text-green-600 hover:text-green-700 font-medium"
+            >
+              素材库
+            </button>
           </div>
 
           {showHistory && history.length > 0 && (
@@ -245,7 +258,7 @@ export default function PremiseTab() {
 
         {/* Done: show result */}
         {hasResult && stream.result ? (
-          <PremiseResultView result={stream.result} />
+          <PremiseResultView result={stream.result} onAction={onAction} />
         ) : null}
       </div>
 
@@ -275,7 +288,7 @@ export default function PremiseTab() {
 
 // ─── Result sub-component (defined before use) ────────────────────────────────
 
-function PremiseResultView({ result }: { result: PremiseResult }) {
+function PremiseResultView({ result, onAction }: { result: PremiseResult; onAction?: (action: string, data?: string) => void }) {
   const themeItem = { label: "主题", value: result.theme, icon: "📋" };
   const attitudeItem = { label: "态度", value: result.attitude, icon: "💢" };
   const conflictItem = { label: "核心矛盾", value: result.conflict, icon: "⚡" };
@@ -323,6 +336,18 @@ function PremiseResultView({ result }: { result: PremiseResult }) {
           </div>
           <p className="text-base font-semibold text-gray-900 mb-2">{esc(result.recommendation.text)}</p>
           <p className="text-sm text-gray-600">{esc(result.recommendation.reason)}</p>
+        </div>
+      ) : null}
+
+      {/* Action buttons */}
+      {result.recommendation && result.recommendation.text ? (
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => onAction?.("go-angles", result.recommendation.text)}
+            className="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            🔍 用这个前提找角度
+          </button>
         </div>
       ) : null}
 

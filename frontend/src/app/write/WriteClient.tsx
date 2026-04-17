@@ -938,8 +938,8 @@ function StreamingResultCard({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function WritePage() {
-  const [inputText, setInputText] = useState("");
+export default function WritePage({ initialText, onClearPending }: { initialText?: string; onClearPending?: () => void }) {
+  const [inputText, setInputText] = useState(initialText ?? "");
   const [stream, setStream] = useState<StreamingState>({
     phase: "idle",
     rawTokens: "",
