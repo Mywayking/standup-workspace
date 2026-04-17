@@ -1,0 +1,357 @@
+"""
+梗写前提 API
+输入：一句梗/包袱句/吐槽句
+输出：梗拆解分析 + 3-5条前提候选（为什么成立/怎么铺垫/适合谁说/起手句）
+
+两阶段生成：
+  Phase 1 - 梗拆解：识别梗类型、核心冲突、类比对象、情绪、人设、笑点机制
+  Phase 2 - 前提生成：基于拆解结果生成差异化前提候选
+"""
+import json
+import logging
+import re
+import uuid
+from typing import Optional
+
+import httpx
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+from ..config import settings
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api", tags=["joke-to-premise"])
+
+# ─── Request / Response Schemas ──────────────────────────────────────────────
+
+
+class JokeToPremiseRequest(BaseModel):
+    text: str = Field(..., min_length=3, max_length=500, description="一句梗/包袱句/吐槽句")
+    topic: Optional[str] = Field(None, description="主题偏好：职场/亲密关系/日常生活等")
+    style: Optional[str] = Field(None, description="风格偏好：自嘲/毒舌/冷幽默等")
+    depth: Optional[str] = Field(
+        default="premise_only",
+        description="输出深度：premise_only | premise_with_setup | premise_with_draft",
+    )
+    scene: Optional[str] = Field(default="standup", description="表达场景：standup | short_video | social_post")
+
+
+# ─── Prompt Templates ─────────────────────────────────────────────────────────
+
+JOKE_ANALYSIS_SYSTEM = """你是一个中文脱口秀创作助手。
+
+用户会输入一句梗、包袱句、类比句或吐槽句。
+你的任务是将这句话拆解成结构化的创作素材。
+
+请分析并输出以下字段（JSON格式）：
+{
+  "input_type": "joke_line" | "topic_line" | "raw_material" | "long_draft" | "unknown",
+  "joke_type": "类比型" | "反差型" | "结论型" | "夸张型" | "角色错位型" | "情绪判断型" | "unknown",
+  "core_topic": "一句话概括这个梗在说什么主题",
+  "core_conflict": "核心冲突是什么",
+  "comparison_target": "如果是类比型，类比的对象是什么",
+  "emotion": ["情绪关键词1", "情绪关键词2"],
+  "persona_candidates": ["适合说这句话的人设1", "人设2"],
+  "humor_mechanism": "一句话描述这个梗的笑点是怎么产生的",
+  "suggestion": "如果输入不像梗而像素材/主题，给出简短建议；否则为null"
+}
+
+要求：
+- 只输出JSON，不要输出任何解释
+- input_type 必须准确判断
+- emotion 最多3个
+- persona_candidates 最多3个"""
+
+
+JOKE_ANALYSIS_USER = """分析这句梗：
+
+{text}
+
+{topic_hint}
+{style_hint}"""
+
+
+PREMISE_GENERATION_SYSTEM = """你是一个中文脱口秀创作助手。
+
+用户的输入是一句已经成立的梗/包袱句。
+基于前一步的拆解结果，你需要生成3-5条不同角度的前提候选。
+
+每条前提应该：
+- 有独特的切入角度（自嘲/社会观察/行业视角/人物关系/角色错位等）
+- 能让观众产生共鸣
+- 有具体的铺垫方向和起手句
+- 口语化、可直接上台讲
+
+每条输出格式（JSON数组）：
+[
+  {{
+    "id": "p1",
+    "title": "前提标题（15字以内，有冲击力）",
+    "why_it_works": "为什么这个前提好笑，30字以内",
+    "setup_direction": "怎么铺垫，50字以内，要有具体场景和人物",
+    "persona": "适合什么人设来说，10字以内",
+    "emotion": "情绪色彩，5字以内",
+    "opening_line": "一句可直接开场的起手句，20字以内，口语化"
+  }},
+  ...共3-5条
+]
+
+要求：
+- 只输出JSON数组，不要有任何解释
+- 每条角度必须明显不同
+- 要有具体人物、场景、动作，不要空泛
+- opening_line必须像人说的话，不是写作文的句子
+- 如果前一步的suggestion不为null，优先按那个方向生成"""
+
+
+PREMISE_GENERATION_USER = """梗：{text}
+
+拆解结果：
+- 梗类型：{joke_type}
+- 核心主题：{core_topic}
+- 核心冲突：{core_conflict}
+- 情绪：{emotion}
+- 笑点机制：{humor_mechanism}
+- 适合人设：{persona}
+
+生成3-5条差异化前提候选。"""
+
+
+# ─── JSON Extraction ──────────────────────────────────────────────────────────
+
+
+def _extract_json(text: str):
+    text = re.sub(r"[\x00-\x08\x0E-\x1F\x7F]", "", text)
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    stripped = re.sub(r"```json\s*\n?\s*", "", text)
+    stripped = re.sub(r"```\s*$", "", stripped).strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+    complete_jsons = []
+    count = 0
+    in_string = False
+    escape = False
+    json_start = -1
+    for i, ch in enumerate(text):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_string:
+            escape = True
+            continue
+        if ch == '"' and not escape:
+            in_string = not in_string
+        if in_string:
+            continue
+        if ch == "{":
+            if count == 0:
+                json_start = i
+            count += 1
+        elif ch == "}":
+            count -= 1
+            if count == 0 and json_start >= 0:
+                try:
+                    complete_jsons.append(json.loads(text[json_start : i + 1]))
+                except json.JSONDecodeError:
+                    pass
+                json_start = -1
+    if complete_jsons:
+        return complete_jsons[-1]
+    return None
+
+
+# ─── LLM Call ─────────────────────────────────────────────────────────────────
+
+
+def _call_llm_sync(system_prompt: str, user_prompt: str) -> dict:
+    """同步调用 LLM，支持 MiniMax primary + DeepSeek fallback"""
+    minimax_key = settings.minimax_api_key
+    deepseek_key = settings.deepseek_api_key
+
+    if minimax_key:
+        try:
+            with httpx.Client(timeout=httpx.Timeout(120.0)) as client:
+                r = client.post(
+                    "https://api.minimax.chat/v1/chat/completions",
+                    json={
+                        "model": "MiniMax-M2.7",
+                        "messages": [
+                            {"role": "system", "content": system_prompt.strip()},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 4000,
+                    },
+                    headers={"Authorization": "Bearer " + minimax_key, "Content-Type": "application/json"},
+                )
+                r.raise_for_status()
+                resp = r.json()["choices"][0]["message"]["content"]
+                resp = re.sub(r"<thinking>.*?</thinking>", "", resp, flags=re.DOTALL)
+                result = _extract_json(resp)
+                if result:
+                    return result
+                logger.warning(f"[JokeToPremise] MiniMax parse failed: {resp[:100]}")
+        except Exception as exc:
+            logger.warning(f"[JokeToPremise] MiniMax failed: {exc}")
+
+    if deepseek_key:
+        try:
+            with httpx.Client(timeout=httpx.Timeout(120.0)) as client:
+                r = client.post(
+                    "https://api.deepseek.com/chat/completions",
+                    json={
+                        "model": "deepseek-chat",
+                        "messages": [
+                            {"role": "system", "content": system_prompt.strip()},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 4000,
+                    },
+                    headers={"Authorization": "Bearer " + deepseek_key, "Content-Type": "application/json"},
+                )
+                r.raise_for_status()
+                resp = r.json()["choices"][0]["message"]["content"]
+                result = _extract_json(resp)
+                if result:
+                    return result
+                first = resp.find("{")
+                last = resp.rfind("}")
+                if first >= 0 and last > first:
+                    return json.loads(resp[first : last + 1])
+                return {"error": "Parse Failed: " + resp[:150]}
+        except Exception as exc:
+            return {"error": "DeepSeek failed: " + str(exc)}
+
+    return {"error": "No LLM API key configured"}
+
+
+# ─── Stream Generator ─────────────────────────────────────────────────────────
+
+
+async def _stream_joke_to_premise(req: JokeToPremiseRequest):
+    request_id = f"jtp_{uuid.uuid4().hex[:8]}"
+    _json = json.dumps
+
+    # Build hints
+    topic_hint = f"主题偏好：{req.topic}" if req.topic else ""
+    style_hint = f"风格偏好：{req.style}" if req.style else ""
+
+    # ── Phase 1: 梗拆解 ───────────────────────────────────────────────────────
+    analysis_user = JOKE_ANALYSIS_USER.format(
+        text=req.text,
+        topic_hint=topic_hint,
+        style_hint=style_hint,
+    ).strip()
+
+    yield f"event: progress\ndata: {_json({'phase': 'analyzing', 'message': '正在拆解梗...'})}\n\n"
+
+    analysis_result = _call_llm_sync(JOKE_ANALYSIS_SYSTEM, analysis_user)
+
+    if analysis_result.get("error"):
+        yield f"event: error\ndata: {_json({'error': analysis_result['error'], 'request_id': request_id})}\n\n"
+        return
+
+    # Emit analysis phase
+    yield f"event: analysis\ndata: {_json(analysis_result)}\n\n"
+
+    # Check if input type is not a joke - warn user
+    input_type = analysis_result.get("input_type", "unknown")
+    if input_type in ("topic_line", "raw_material", "long_draft"):
+        suggestion = analysis_result.get("suggestion")
+        if suggestion:
+            yield f"event: warning\ndata: {_json({'message': suggestion, 'input_type': input_type})}\n\n"
+
+    # ── Phase 2: 前提生成 ────────────────────────────────────────────────────
+    yield f"event: progress\ndata: {_json({'phase': 'generating', 'message': '正在生成前提候选...'})}\n\n"
+
+    premise_user = PREMISE_GENERATION_USER.format(
+        text=req.text,
+        joke_type=analysis_result.get("joke_type", "unknown"),
+        core_topic=analysis_result.get("core_topic", ""),
+        core_conflict=analysis_result.get("core_conflict", ""),
+        emotion=", ".join(analysis_result.get("emotion", [])[:2]),
+        humor_mechanism=analysis_result.get("humor_mechanism", ""),
+        persona=", ".join(analysis_result.get("persona_candidates", [])[:2]),
+    )
+
+    premises_result = _call_llm_sync(PREMISE_GENERATION_SYSTEM, premise_user)
+
+    if isinstance(premises_result, dict) and premises_result.get("error"):
+        yield f"event: error\ndata: {_json({'error': premises_result['error'], 'request_id': request_id})}\n\n"
+        return
+
+    # Ensure we have a list
+    if isinstance(premises_result, dict):
+        # If the model returned a dict with a "premises" key
+        if "premises" in premises_result:
+            premises = premises_result["premises"]
+        elif "result" in premises_result:
+            premises = premises_result["result"]
+        else:
+            premises = premises_result
+    elif isinstance(premises_result, list):
+        premises = premises_result
+    else:
+        premises = []
+
+    # Normalize each premise - ensure all required fields exist
+    normalized = []
+    for i, p in enumerate(premises[:5], 1):
+        if isinstance(p, dict):
+            normalized.append({
+                "id": p.get("id", f"p{i}"),
+                "title": p.get("title", "前提" + str(i)),
+                "why_it_works": p.get("why_it_works", ""),
+                "setup_direction": p.get("setup_direction", ""),
+                "persona": p.get("persona", ""),
+                "emotion": p.get("emotion", ""),
+                "opening_line": p.get("opening_line", ""),
+            })
+    if not normalized:
+        yield f"event: error\ndata: {_json({'error': '生成前提失败，请重试', 'request_id': request_id})}\n\n"
+        return
+
+    # ── Done ──────────────────────────────────────────────────────────────────
+    final = {
+        "request_id": request_id,
+        "input_type": input_type,
+        "analysis": analysis_result,
+        "premises": normalized,
+    }
+    yield f"event: done\ndata: {_json(final)}\n\n"
+
+
+# ─── API Routes ───────────────────────────────────────────────────────────────
+
+
+@router.post("/joke-to-premise")
+async def joke_to_premise(req: JokeToPremiseRequest):
+    """
+    梗写前提 - 输入一句梗，反推多个可能成立的前提
+
+    SSE 事件流：
+      progress → 阶段提示
+      analysis → 梗拆解结果
+      warning  → 输入类型警告（可选）
+      done     → 最终结果
+      error    → 错误
+    """
+    if len(req.text.strip()) < 3:
+        raise HTTPException(400, "请输入一句完整的梗（至少3个字）")
+
+    return StreamingResponse(
+        _stream_joke_to_premise(req),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

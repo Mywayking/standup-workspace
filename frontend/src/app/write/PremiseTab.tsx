@@ -94,6 +94,7 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
       const reader = resp.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let pendingEvent = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -104,10 +105,21 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
           const nl = buffer.indexOf("\n");
           const line = buffer.slice(0, nl).trim();
           buffer = buffer.slice(nl + 1);
-          if (!line.startsWith("event: ") || line.length < 8) continue;
 
-          const evt = line.slice(7, line.indexOf("\n", 7) === -1 ? line.length : line.indexOf("\n", 7));
-          const dataStr = line.slice(line.indexOf("data: ") + 6);
+          if (line.startsWith("event: ")) {
+            pendingEvent = line.slice(7).trim();
+            continue;
+          }
+
+          if (!line.startsWith("data: ")) {
+            if (line === "") {
+              pendingEvent = "";
+            }
+            continue;
+          }
+
+          const dataStr = line.slice(6);
+          const evt = pendingEvent;
 
           if (evt === "token") {
             setStream((s) => ({ ...s, displayText: s.displayText + dataStr }));
@@ -170,29 +182,31 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-800">提炼前提</h2>
-            <button
-              onClick={() => setShowHistory(!showHistory)}
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
-              {showHistory ? "收起历史" : "查看历史"}
-            </button>
-            <button
-              onClick={() => {
-                const url = prompt('输入素材库搜索关键词（可留空查看全部）：');
-                if (url !== null) {
-                  const openUrl = url ? '/kb?q=' + encodeURIComponent(url) : '/kb';
-                  window.open(openUrl, '_blank');
-                }
-              }}
-              className="text-sm text-green-600 hover:text-green-700 font-medium"
-            >
-              素材库
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+              >
+                {showHistory ? "收起历史" : "📋 查看历史"}
+              </button>
+              <button
+                onClick={() => {
+                  const kw = prompt('输入素材库搜索关键词（可留空查看全部素材）：');
+                  if (kw !== null) {
+                    const openUrl = kw ? '/kb?q=' + encodeURIComponent(kw) : '/kb';
+                    window.open(openUrl, '_blank');
+                  }
+                }}
+                className="text-sm text-green-600 hover:text-green-700 font-medium"
+              >
+                📚 素材库
+              </button>
+            </div>
           </div>
 
-          {showHistory && history.length > 0 && (
+          {showHistory && (
             <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-100 max-h-60 overflow-y-auto">
-              <p className="text-xs text-gray-400 mb-2 font-medium">最近提炼</p>
+              <p className="text-xs text-gray-400 mb-2 font-medium">📋 你之前提炼过的素材</p>
               <div className="space-y-1">
                 {history.map((item) => (
                   <button
@@ -210,12 +224,20 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
           <textarea
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder={"输入一段素材：\n一件事、一句抱怨、一个观察、一段情绪……\n\n例如：昨天开会，领导问大家有没有想法，结果每个人说完他都否了，最后说还是按他原来的来。"}
+            placeholder={"输入一段素材：\n一件事、一句抱怨、一个观察、一段情绪……\n\n📝 示例：\n• 我发现同事离职后，工位像被系统自动回收一样\n• 我妈总觉得我写脱口秀不算正经工作\n• 成年人最擅长的事，就是把委屈说成体面"}
             className="w-full h-48 p-4 text-base border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             disabled={isStreaming}
           />
           <div className="flex items-center justify-between mt-3">
-            <span className="text-xs text-gray-400">{inputText.length} 字符</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-400">{inputText.length > 0 ? `已输入 ${inputText.length} 字` : '请输入素材'}</span>
+              {inputText.length > 0 && inputText.length < 20 && (
+                <span className="text-xs text-amber-500">至少 20 字可开始，建议 50–200 字</span>
+              )}
+              {inputText.length >= 20 && (
+                <span className="text-xs text-green-500">✓ 可以开始提炼</span>
+              )}
+            </div>
             <button
               onClick={handleAnalyze}
               disabled={!canAnalyze || isStreaming}

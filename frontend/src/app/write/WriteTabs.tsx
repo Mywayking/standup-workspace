@@ -3,9 +3,10 @@ import { useState } from "react";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import WriteClient from "./WriteClient";
 import PremiseTab from "./PremiseTab";
+import JokeToPremiseTab from "./JokeToPremiseTab";
 import AnglesTab from "./AnglesTab";
 
-type Tab = "premise" | "angles" | "rewrite";
+type Tab = "premise" | "joke_to_premise" | "angles" | "rewrite";
 
 export default function WriteTabs() {
   const [activeTab, setActiveTab] = useState<Tab>("premise");
@@ -36,6 +37,7 @@ export default function WriteTabs() {
           <div className="flex gap-1">
             {[
               { key: "premise", label: "提炼前提", desc: "素材 → 前提" },
+              { key: "joke_to_premise", label: "梗写前提", desc: "梗 → 前提" },
               { key: "angles", label: "找角度", desc: "前提 → 角度" },
               { key: "rewrite", label: "改稿", desc: "分析整段" },
             ].map(({ key, label, desc }) => (
@@ -65,6 +67,9 @@ export default function WriteTabs() {
               initialData={pendingPremise}
               onClearPending={() => setPendingPremise("")}
             />
+          )}
+          {activeTab === "joke_to_premise" && (
+            <JokeToPremiseTab onAction={handleAction} />
           )}
           {activeTab === "angles" && (
             <AnglesTab

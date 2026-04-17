@@ -48,12 +48,29 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
   const [history, setHistory] = useState<{ id: string; premise: string; result: AnglesResult }[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
+  const autoTriggered = useRef(false);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem("angles_history");
       if (raw) setHistory(JSON.parse(raw));
     } catch {}
   }, []);
+
+  // Auto-trigger analysis when initialData comes from cross-tab navigation
+  useEffect(() => {
+    if (initialData && !autoTriggered.current) {
+      autoTriggered.current = true;
+      const timer = setTimeout(() => {
+        if (inputText.trim().length >= 5) {
+          // Use React ref + dispatchEvent for reliability in all environments
+          const btn = window.document.querySelector('button[class*="bg-blue"]') as HTMLButtonElement | null;
+          if (btn) btn.click();
+        }
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [initialData, inputText]);
 
   const handleRestore = useCallback((item: { id: string; premise: string; result: AnglesResult }) => {
     setInputText(item.premise);
@@ -92,6 +109,7 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
       const reader = resp.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let pendingEvent = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -102,10 +120,21 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
           const nl = buffer.indexOf("\n");
           const line = buffer.slice(0, nl).trim();
           buffer = buffer.slice(nl + 1);
-          if (!line.startsWith("event: ") || line.length < 8) continue;
 
-          const evt = line.slice(7, line.indexOf("\n", 7) === -1 ? line.length : line.indexOf("\n", 7));
-          const dataStr = line.slice(line.indexOf("data: ") + 6);
+          if (line.startsWith("event: ")) {
+            pendingEvent = line.slice(7).trim();
+            continue;
+          }
+
+          if (!line.startsWith("data: ")) {
+            if (line === "") {
+              pendingEvent = "";
+            }
+            continue;
+          }
+
+          const dataStr = line.slice(6);
+          const evt = pendingEvent;
 
           if (evt === "token") {
             setStream((s) => ({ ...s, displayText: s.displayText + dataStr }));

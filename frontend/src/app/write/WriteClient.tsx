@@ -996,6 +996,22 @@ export default function WritePage({ initialText, onClearPending }: { initialText
     setHistoryLoading(false);
   }, []);
 
+  const autoTriggered = useRef(false);
+
+  // Auto-trigger analysis when initialText comes from cross-tab navigation
+  useEffect(() => {
+    if (initialText && !autoTriggered.current) {
+      autoTriggered.current = true;
+      const timer = setTimeout(() => {
+        if (inputText.trim().length >= 20) {
+          const btn = document.querySelector('button:has-text("开始分析")') as HTMLButtonElement | null;
+          if (btn && !btn.disabled) btn.click();
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [initialText, inputText]);
+
   // Global Cmd+K shortcut
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
