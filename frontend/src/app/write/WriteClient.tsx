@@ -674,16 +674,19 @@ function StreamingResultCard({
   const effectiveSegments = (r.segments ?? []).filter((s) => !s.problem && s.text.trim().length > 10);
   const effectiveJokes = effectiveSegments.slice(0, 3).map((s) => s.text.trim());
   const getVerdict = () => {
-    if (r.comedy_type && r.premise) {
-      const p = r.premise.length > 30 ? r.premise.slice(0, 30) + "…" : r.premise;
-      return `这段属于「${r.comedy_type}」，核心前提是：${p}。`;
+    const ct = typeof r.comedy_type === 'string' ? r.comedy_type : '';
+    const prem = typeof r.premise === 'string' ? r.premise : '';
+    const tr = typeof r.theme_refined === 'string' ? r.theme_refined : '';
+    if (ct && prem) {
+      const p = prem.length > 30 ? prem.slice(0, 30) + "…" : prem;
+      return `这段属于「${ct}」，核心前提是：${p}。`;
     }
-    if (r.comedy_type) return `这段属于「${r.comedy_type}」`;
-    if (r.premise) {
-      const p = r.premise.length > 40 ? r.premise.slice(0, 40) + "…" : r.premise;
+    if (ct) return `这段属于「${ct}」`;
+    if (prem) {
+      const p = prem.length > 40 ? prem.slice(0, 40) + "…" : prem;
       return `核心前提：${p}`;
     }
-    if (r.theme_refined) return `主题：${r.theme_refined}`;
+    if (tr) return `主题：${tr}`;
     return "已完成分析，请查看以下详情";
   };
 
@@ -1080,12 +1083,12 @@ export default function WritePage() {
             const result: AnalyzeResult = {
               evaluation: final.evaluation ?? {},
               performer_tags: final.performer_tags ?? [],
-              premise: final.premise ?? "",
-              theme_refined: final.theme_refined ?? "",
+              premise: typeof final.premise === 'string' ? final.premise : String(final.premise ?? ''),
+              theme_refined: typeof final.theme_refined === 'string' ? final.theme_refined : '',
               comedy_type: final.comedy_type ?? "",
-              structures: final.structures ?? "",
+              structures: typeof final.structures === 'string' ? final.structures : (Array.isArray(final.structures) ? final.structures.join('、') : ''),
               techniques: Array.isArray(final.techniques) ? final.techniques : [],
-              segments: (final.segments ?? []).map((s: any) => ({
+              segments: (Array.isArray(final.segments) ? final.segments.map((s: any) => ({
                 text: s.text ?? "",
                 structure: s.structure ?? "unknown",
                 attitude: s.attitude ?? "",
@@ -1093,7 +1096,7 @@ export default function WritePage() {
                 premise: s.premise ?? "",
                 techniques: Array.isArray(s.techniques) ? s.techniques : [],
                 problem: s.problem ?? "",
-              })),
+              })) : []),
               improved_script: final.improved_script ?? "",
               script_changes: (final.script_changes ?? []).map((c: any) => ({
                 location: c.location ?? "",
@@ -1161,12 +1164,36 @@ export default function WritePage() {
   const handleRestore = (item: HistoryItem) => {
     if (!item || !item.result) return;
     try {
+      const raw = item.result;
+      // Normalize old history data that may have arrays instead of strings
+      const result = {
+        ...raw,
+        comedy_type: typeof raw.comedy_type === 'string' ? raw.comedy_type : (raw.comedy_type ?? ''),
+        premise: typeof raw.premise === 'string' ? raw.premise : String(raw.premise ?? ''),
+        theme_refined: typeof raw.theme_refined === 'string' ? raw.theme_refined : '',
+        structures: (() => {
+          const s = raw.structures as unknown;
+          if (typeof s === 'string') return s;
+          if (Array.isArray(s)) return (s as string[]).join('、');
+          return '';
+        })(),
+        techniques: Array.isArray(raw.techniques) ? raw.techniques : [],
+        segments: Array.isArray(raw.segments) ? raw.segments.map((s: any) => ({
+          text: typeof s.text === 'string' ? s.text : String(s.text ?? ''),
+          structure: typeof s.structure === 'string' ? s.structure : 'unknown',
+          attitude: typeof s.attitude === 'string' ? s.attitude : '',
+          theme: typeof s.theme === 'string' ? s.theme : '',
+          premise: typeof s.premise === 'string' ? s.premise : '',
+          techniques: Array.isArray(s.techniques) ? s.techniques : [],
+          problem: typeof s.problem === 'string' ? s.problem : '',
+        })) : [],
+      };
       setInputText(item.text ?? '');
       setStream({
         phase: "done",
         rawTokens: "",
         displayText: "",
-        result: item.result,
+        result,
         error: null,
         sessionId: "",
         feedbackSent: null,
@@ -1375,9 +1402,9 @@ export default function WritePage() {
                   const r = stream.result!;
                   const lines = [
                     ...(r.comedy_type ? [`🎭 类型：${r.comedy_type}`] : []),
-                    `✅ 结构：${r.structures ?? ''}`,
-                    `🎯 技巧：${(r.techniques ?? []).join('、')}`,
-                    r.premise ? `💡 前提：${r.premise}` : '',
+                    `✅ 结构：${typeof r.structures === 'string' ? r.structures : ''}`,
+                    `🎯 技巧：${Array.isArray(r.techniques) ? r.techniques.join('、') : ''}`,
+                    typeof r.premise === 'string' && r.premise ? `💡 前提：${r.premise}` : '',
                     r.theme_refined ? `🏷️ 主题：${r.theme_refined}` : '',
                     '',
                     '--- 段落拆解 ---',
