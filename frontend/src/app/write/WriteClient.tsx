@@ -391,6 +391,9 @@ function HistoryPanel({
   onRestore,
   onDelete,
   onClearAll,
+  searchQuery,
+  onSearch,
+  loading,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -398,14 +401,26 @@ function HistoryPanel({
   onRestore: (item: HistoryItem) => void;
   onDelete: (id: string) => void;
   onClearAll: () => void;
+  searchQuery: string;
+  onSearch: (q: string) => void;
+  loading: boolean;
 }) {
   if (!open) return null;
+
+  const filtered = searchQuery.trim()
+    ? items.filter(
+        (item) =>
+          item.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          item.result?.comedy_type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          item.result?.theme_refined?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : items;
 
   return (
     <div className="border-t border-gray-100 bg-gray-50/50 p-4">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-semibold text-gray-400 uppercase">
-          历史记录 <span className="text-gray-300 font-normal">({items.length})</span>
+          历史记录 <span className="text-gray-300 font-normal">({loading ? '-' : filtered.length}{searchQuery.trim() && filtered.length !== items.length ? `/${items.length}` : ''})</span>
         </p>
         <div className="flex items-center gap-2">
           {items.length > 0 && (
@@ -420,11 +435,29 @@ function HistoryPanel({
           <button onClick={onToggle} className="text-xs text-gray-400 hover:text-gray-600">收起 ▲</button>
         </div>
       </div>
-      {items.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-4">暂无历史记录</p>
+
+      {/* Search input */}
+      {items.length > 0 && (
+        <div className="mb-3">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => onSearch(e.target.value)}
+            placeholder="搜索历史记录..."
+            className="w-full px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-400 transition-colors placeholder-gray-300"
+          />
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-xs text-gray-400 text-center py-4">加载中...</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-xs text-gray-400 text-center py-4">
+          {searchQuery.trim() ? '没有找到匹配的历史记录' : '暂无历史记录'}
+        </p>
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-1">
-          {items.map((item) => (
+          {filtered.map((item) => (
             <HistoryItemCard
               key={item.id}
               item={item}
@@ -910,6 +943,8 @@ export default function WritePage() {
   const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historySearch, setHistorySearch] = useState('');
   const [cmdKOpen, setCmdKOpen] = useState(false);
   const [cmdKQuery, setCmdKQuery] = useState("");
   const charCount = inputText.length;
@@ -923,6 +958,7 @@ export default function WritePage() {
       const raw = localStorage.getItem("comedy_history");
       if (raw) setHistory(JSON.parse(raw));
     } catch {}
+    setHistoryLoading(false);
   }, []);
 
   // Global Cmd+K shortcut
@@ -1221,6 +1257,9 @@ export default function WritePage() {
         onRestore={handleRestore}
         onDelete={deleteHistory}
         onClearAll={clearAllHistory}
+        searchQuery={historySearch}
+        onSearch={setHistorySearch}
+        loading={historyLoading}
       />
 
       {/* Main Content */}
