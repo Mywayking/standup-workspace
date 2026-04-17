@@ -34,6 +34,22 @@ function esc(s: unknown): string {
 
 const GUIDE_TEXT = "有一个前提，想看看有没有更新鲜的切入角度？";
 
+function formatAnglesShare(result: AnglesResult) {
+  const lines = [
+    "# 找角度结果",
+    "",
+    result.current_problem?.summary ? `**当前问题：** ${result.current_problem.summary}` : "",
+    "",
+    ...(result.angles || []).map((a, i) =>
+      `${i+1}. **${a.name}**\n   ${a.premise}\n   展开：${a.expansion_idea} | 场景：${a.scene_direction} | 结尾：${a.ending_direction}`
+    ),
+  ];
+  if (result.recommendation?.name) {
+    lines.push("", "## ⭐ 推荐角度", `**${result.recommendation.name}**`, result.recommendation.reason || "");
+  }
+  return lines.join("\n");
+}
+
 export default function AnglesTab({ onAction, initialData, onClearPending }: { onAction?: (action: string, data?: string) => void; initialData?: string; onClearPending?: () => void }) {
   const [inputText, setInputText] = useState(initialData ?? "");
   const [stream, setStream] = useState<StreamingState>({
@@ -52,8 +68,12 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
 
   // Copy feedback state
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [introDismissed, setIntroDismissed] = useState(() => {
+    try { return localStorage.getItem("angles_intro_dismissed") === "1"; } catch { return false; }
+  });
 
   const autoTriggered = useRef(false);
+  const regenerateRef = useRef<() => void>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -88,6 +108,15 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
   }, []);
 
   const canAnalyze = inputText.trim().length >= 5;
+
+  const handleRegenerate = useCallback(() => {
+    if (canAnalyze && stream.phase === "done") {
+      setStream({ phase: "idle", displayText: "", result: null, error: null });
+      setTimeout(() => handleAnalyze(), 50);
+    }
+  }, [canAnalyze, stream.phase]);
+
+  regenerateRef.current = handleRegenerate;
 
   const handleAnalyze = useCallback(async () => {
     if (!canAnalyze || stream.phase === "thinking") return;
@@ -299,38 +328,56 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
         )}
 
         {hasResult && stream.result && (
-          <AnglesResultView result={stream.result} onAction={onAction} copiedId={copiedId} onCopy={(id) => { setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); }} />
+          <AnglesResultView result={stream.result} onAction={onAction} copiedId={copiedId} onCopy={(id) => { setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); }} onRegenerate={handleRegenerate} />
         )}
       </div>
 
       {/* Right: Intro */}
       <div>
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <p className="text-base font-bold text-gray-800 mb-2">这个工具做什么？</p>
-          <p className="text-sm text-gray-500 leading-relaxed mb-4">
-            针对一个<strong>已有前提</strong>，快速生成<strong>更新鲜、更有喜剧价值</strong>的切入角度。
-          </p>
-          <div className="space-y-2">
-            {[
-              "判断当前前提的问题",
-              "生成 6 个不同维度角度",
-              "反常识 / 人性 / 权力关系",
-              "自嘲 / 类比 / 更狠",
-              "推荐最优角度并说明理由",
-            ].map((item) => (
-              <div key={item} className="flex items-start gap-2">
-                <span className="text-green-500 mt-0.5 shrink-0">✓</span>
-                <p className="text-sm text-gray-600">{item}</p>
-              </div>
-            ))}
+        {introDismissed ? (
+          <button
+            onClick={() => { setIntroDismissed(false); try { localStorage.removeItem("angles_intro_dismissed"); } catch {} }}
+            className="w-full text-left text-sm text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+          >
+            ℹ️ 显示工具说明
+          </button>
+        ) : (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-base font-bold text-gray-800">这个工具做什么？</p>
+              <button
+                onClick={() => { setIntroDismissed(true); try { localStorage.setItem("angles_intro_dismissed", "1"); } catch {} }}
+                className="text-gray-400 hover:text-gray-600 text-xs"
+                title="不再显示"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 leading-relaxed mb-4">
+              针对一个<strong>已有前提</strong>，快速生成<strong>更新鲜、更有喜剧价值</strong>的切入角度。
+            </p>
+            <div className="space-y-2">
+              {[
+                "判断当前前提的问题",
+                "生成 6 个不同维度角度",
+                "反常识 / 人性 / 权力关系",
+                "自嘲 / 类比 / 更狠",
+                "推荐最优角度并说明理由",
+              ].map((item) => (
+                <div key={item} className="flex items-start gap-2">
+                  <span className="text-green-500 mt-0.5 shrink-0">✓</span>
+                  <p className="text-sm text-gray-600">{item}</p>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
 }
 
-function AnglesResultView({ result, onAction, copiedId, onCopy }: { result: AnglesResult; onAction?: (action: string, data?: string) => void; copiedId: string | null; onCopy: (id: string) => void }) {
+function AnglesResultView({ result, onAction, copiedId, onCopy, onRegenerate }: { result: AnglesResult; onAction?: (action: string, data?: string) => void; copiedId: string | null; onCopy: (id: string) => void; onRegenerate?: () => void }) {
   const [expandedAngle, setExpandedAngle] = useState<number | null>(null);
 
   return (
@@ -403,8 +450,16 @@ function AnglesResultView({ result, onAction, copiedId, onCopy }: { result: Angl
           </div>
           <p className="text-sm text-gray-600 mb-3">{esc(result.recommendation.reason)}</p>
 
-          {/* Copy the recommended premise */}
           <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                const text = formatAnglesShare(result);
+                navigator.clipboard.writeText(text).catch(() => {});
+              }}
+              className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              📤 分享
+            </button>
             <button
               onClick={() => {
                 onCopy("rec");

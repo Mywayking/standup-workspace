@@ -43,12 +43,29 @@ function esc(s: unknown): string {
 }
 
 const TOPICS = ["职场", "亲密关系", "原生家庭", "社交", "互联网", "AI", "日常生活", "消费主义"];
+
+function formatJTPShare(premises: PremiseCandidate[]) {
+  const lines = [
+    "# 梗写前提结果",
+    "",
+    ...premises.map((p, i) =>
+      `${i+1}. **${p.title}**\n   为什么成立：${p.why_it_works}\n   怎么铺垫：${p.setup_direction}\n   适合谁说：${p.persona}${p.emotion ? '（' + p.emotion + '）' : ''}\n   起手句：${p.opening_line}`
+    ),
+  ];
+  return lines.join("\n");
+}
 const STYLES = ["真实观察", "自嘲", "毒舌", "冷幽默", "夸张"];
 
 export default function JokeToPremiseTab({ onAction }: { onAction?: (action: string, data?: string) => void }) {
   const [inputText, setInputText] = useState("");
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState("");
+  const regenerateRef = useRef<() => void>(null);
+
+  const [introDismissed, setIntroDismissed] = useState(() => {
+    try { return localStorage.getItem("jtp_intro_dismissed") === "1"; } catch { return false; }
+  });
+
   const [stream, setStream] = useState<JTPState>({
     phase: "idle",
     analysisPhase: "",
@@ -60,6 +77,15 @@ export default function JokeToPremiseTab({ onAction }: { onAction?: (action: str
   const abortRef = useRef<AbortController | null>(null);
 
   const canGenerate = inputText.trim().length >= 3;
+
+  const handleRegenerate = useCallback(() => {
+    if (canGenerate && stream.phase === "done") {
+      setStream({ phase: "idle", analysisPhase: "", displayText: "", analysis: null, premises: [], error: null });
+      setTimeout(() => handleGenerate(), 50);
+    }
+  }, [canGenerate, stream.phase]);
+
+  regenerateRef.current = handleRegenerate;
 
   const handleGenerate = useCallback(async () => {
     if (!canGenerate || stream.phase === "thinking") return;
@@ -314,33 +340,51 @@ export default function JokeToPremiseTab({ onAction }: { onAction?: (action: str
 
         {/* Done: show premise cards */}
         {hasResult && (
-          <JTPResultView premises={stream.premises} onAction={onAction} />
+          <JTPResultView premises={stream.premises} onAction={onAction} onRegenerate={handleRegenerate} />
         )}
       </div>
 
       {/* Right column: intro */}
       <div>
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <p className="text-base font-bold text-gray-800 mb-2">什么时候用这个？</p>
-          <p className="text-sm text-gray-500 leading-relaxed mb-4">
-            你已经想到一句好笑的梗，但不知道怎么往前铺垫。
-          </p>
-          <div className="space-y-2">
-            {[
-              "一句结尾金句",
-              "一个有趣的比喻",
-              "一句吐槽或观察",
-            ].map((item) => (
-              <div key={item} className="flex items-start gap-2">
-                <span className="text-green-500 mt-0.5 shrink-0">✓</span>
-                <p className="text-sm text-gray-600">{item}</p>
-              </div>
-            ))}
+        {introDismissed ? (
+          <button
+            onClick={() => { setIntroDismissed(false); try { localStorage.removeItem("jtp_intro_dismissed"); } catch {} }}
+            className="w-full text-left text-sm text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+          >
+            ℹ️ 显示工具说明
+          </button>
+        ) : (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-base font-bold text-gray-800">什么时候用这个？</p>
+              <button
+                onClick={() => { setIntroDismissed(true); try { localStorage.setItem("jtp_intro_dismissed", "1"); } catch {} }}
+                className="text-gray-400 hover:text-gray-600 text-xs"
+                title="不再显示"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 leading-relaxed mb-4">
+              你已经想到一句好笑的梗，但不知道怎么往前铺垫。
+            </p>
+            <div className="space-y-2">
+              {[
+                "一句结尾金句",
+                "一个有趣的比喻",
+                "一句吐槽或观察",
+              ].map((item) => (
+                <div key={item} className="flex items-start gap-2">
+                  <span className="text-green-500 mt-0.5 shrink-0">✓</span>
+                  <p className="text-sm text-gray-600">{item}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <p className="text-xs text-gray-400">与「提炼前提」互补：一个是素材出发，一个是梗出发</p>
+            </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <p className="text-xs text-gray-400">与「提炼前提」互补：一个是素材出发，一个是梗出发</p>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -348,9 +392,19 @@ export default function JokeToPremiseTab({ onAction }: { onAction?: (action: str
 
 // ─── Result View ────────────────────────────────────────────────────────────────
 
-function JTPResultView({ premises, onAction }: { premises: PremiseCandidate[]; onAction?: (action: string, data?: string) => void }) {
+function JTPResultView({ premises, onAction, onRegenerate }: { premises: PremiseCandidate[]; onAction?: (action: string, data?: string) => void; onRegenerate?: () => void }) {
   return (
     <div className="space-y-4">
+      {/* Regenerate button */}
+      <div className="flex justify-center">
+        <button
+          onClick={onRegenerate}
+          className="px-4 py-2 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-colors flex items-center gap-1.5"
+        >
+          🔄 换个方向重新反推
+        </button>
+      </div>
+
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
         <p className="text-sm font-semibold text-gray-700 mb-3">前提候选（{premises.length}条）</p>
         <div className="space-y-3">
@@ -381,6 +435,15 @@ function JTPResultView({ premises, onAction }: { premises: PremiseCandidate[]; o
                 </div>
               )}
               <div className="flex flex-wrap gap-2 mt-3">
+                <button
+                  onClick={() => {
+                    const text = formatJTPShare(premises);
+                    navigator.clipboard.writeText(text).catch(() => {});
+                  }}
+                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  📤 分享全部
+                </button>
                 <button
                   onClick={() => {
                     const premiseText = `${esc(p.title)}：${esc(p.setup_direction)}`;

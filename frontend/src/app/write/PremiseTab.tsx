@@ -37,6 +37,25 @@ function esc(s: unknown): string {
 
 const GUIDE_TEXT = "讲一件事、一个经历、一个观察，AI 帮你提炼出可以上台说的喜剧前提。";
 
+function formatPremiseShare(result: PremiseResult) {
+  const lines = [
+    "# 喜剧前提提炼结果",
+    "",
+    `**主题：** ${result.theme}`,
+    `**态度：** ${result.attitude}`,
+    `**核心矛盾：** ${result.conflict}`,
+    "",
+    "## 前提候选",
+    ...(result.premise_candidates || []).map((c, i) =>
+      `${i+1}. **${c.text}**\n   ${c.description || ''}`
+    ),
+  ];
+  if (result.recommendation?.text) {
+    lines.push("", "## ⭐ 推荐前提", `**${result.recommendation.text}**`, result.recommendation.reason || "");
+  }
+  return lines.join("\n");
+}
+
 export default function PremiseTab({ onAction, initialData, onClearPending }: { onAction?: (action: string, data?: string) => void; initialData?: string; onClearPending?: () => void }) {
   const [inputText, setInputText] = useState(initialData ?? "");
   const [stream, setStream] = useState<StreamingState>({
@@ -52,6 +71,11 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
   const [history, setHistory] = useState<{ id: string; text: string; result: PremiseResult }[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [copiedRec, setCopiedRec] = useState(false);
+  const regenerateRef = useRef<() => void>(null);
+
+  const [introDismissed, setIntroDismissed] = useState(() => {
+    try { return localStorage.getItem("premise_intro_dismissed") === "1"; } catch { return false; }
+  });
 
   useEffect(() => {
     try {
@@ -68,6 +92,16 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
   }, []);
 
   const canAnalyze = inputText.trim().length >= 5;
+
+  const handleRegenerate = useCallback(() => {
+    if (canAnalyze && stream.phase === "done") {
+      setStream({ phase: "idle", displayText: "", result: null, error: null });
+      setTimeout(() => handleAnalyze(), 50);
+    }
+  }, [canAnalyze, stream.phase]);
+
+  // Expose regenerate for result view buttons
+  regenerateRef.current = handleRegenerate;
 
   const handleAnalyze = useCallback(async () => {
     if (!canAnalyze || stream.phase === "thinking") return;
@@ -314,29 +348,47 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
 
         {/* Done: show result */}
         {hasResult && stream.result ? (
-          <PremiseResultView result={stream.result} onAction={onAction} />
+          <PremiseResultView result={stream.result} onAction={onAction} onRegenerate={handleRegenerate} />
         ) : null}
       </div>
 
       {/* Right column: intro */}
       <div>
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <p className="text-base font-bold text-gray-800 mb-2">这个工具做什么？</p>
-          <p className="text-sm text-gray-500 leading-relaxed mb-4">
-            把一段素材、情绪、观察，转化成<strong>可以上台说</strong>的喜剧前提。
-          </p>
-          <div className="space-y-2">
-            {introItems.map((item) => (
-              <div key={item} className="flex items-start gap-2">
-                <span className="text-green-500 mt-0.5 shrink-0">✓</span>
-                <p className="text-sm text-gray-600">{item}</p>
-              </div>
-            ))}
+        {introDismissed ? (
+          <button
+            onClick={() => { setIntroDismissed(false); try { localStorage.removeItem("premise_intro_dismissed"); } catch {} }}
+            className="w-full text-left text-sm text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+          >
+            ℹ️ 显示工具说明
+          </button>
+        ) : (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-base font-bold text-gray-800">这个工具做什么？</p>
+              <button
+                onClick={() => { setIntroDismissed(true); try { localStorage.setItem("premise_intro_dismissed", "1"); } catch {} }}
+                className="text-gray-400 hover:text-gray-600 text-xs"
+                title="不再显示"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 leading-relaxed mb-4">
+              把一段素材、情绪、观察，转化成<strong>可以上台说</strong>的喜剧前提。
+            </p>
+            <div className="space-y-2">
+              {introItems.map((item) => (
+                <div key={item} className="flex items-start gap-2">
+                  <span className="text-green-500 mt-0.5 shrink-0">✓</span>
+                  <p className="text-sm text-gray-600">{item}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <p className="text-xs text-gray-400">输入素材越具体，提炼的前提越精准</p>
+            </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <p className="text-xs text-gray-400">输入素材越具体，提炼的前提越精准</p>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -344,7 +396,7 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
 
 // ─── Result sub-component (defined before use) ────────────────────────────────
 
-function PremiseResultView({ result, onAction }: { result: PremiseResult; onAction?: (action: string, data?: string) => void }) {
+function PremiseResultView({ result, onAction, onRegenerate }: { result: PremiseResult; onAction?: (action: string, data?: string) => void; onRegenerate?: () => void }) {
   const themeItem = { label: "主题", value: result.theme, icon: "📋" };
   const attitudeItem = { label: "态度", value: result.attitude, icon: "💢" };
   const conflictItem = { label: "核心矛盾", value: result.conflict, icon: "⚡" };
@@ -353,6 +405,16 @@ function PremiseResultView({ result, onAction }: { result: PremiseResult; onActi
 
   return (
     <div className="space-y-4">
+      {/* Regenerate button */}
+      <div className="flex justify-center">
+        <button
+          onClick={onRegenerate}
+          className="px-4 py-2 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-colors flex items-center gap-1.5"
+        >
+          🔄 换个方向重新提炼
+        </button>
+      </div>
+
       {/* Theme / Attitude / Conflict */}
       <div className="grid grid-cols-3 gap-3">
         {basicItems.map((item) => (
@@ -399,6 +461,15 @@ function PremiseResultView({ result, onAction }: { result: PremiseResult; onActi
       {result.recommendation && result.recommendation.text ? (
         <div className="flex flex-wrap gap-2">
           <div className="flex flex-wrap gap-2 mt-3">
+            <button
+              onClick={() => {
+                const text = formatPremiseShare(result);
+                navigator.clipboard.writeText(text).catch(() => {});
+              }}
+              className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              📤 分享
+            </button>
             <button
               onClick={() => {
                 navigator.clipboard.writeText(result.recommendation.text).catch(() => {});

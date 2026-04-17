@@ -43,7 +43,13 @@ export default function WriteTabs() {
             ].map(({ key, label, desc }) => (
               <button
                 key={key}
-                onClick={() => setActiveTab(key as Tab)}
+                onClick={() => {
+                  setActiveTab(key as Tab);
+                  // Clear pending data when switching tabs manually
+                  if (key !== "premise") setPendingPremise("");
+                  if (key !== "angles") setPendingAngle("");
+                  if (key !== "rewrite") setPendingRewrite("");
+                }}
                 className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex flex-col items-start gap-0.5 ${
                   activeTab === key
                     ? "border-blue-600 text-blue-700"
