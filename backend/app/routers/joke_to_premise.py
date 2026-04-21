@@ -171,66 +171,41 @@ def _extract_json(text: str):
 
 
 def _call_llm_sync(system_prompt: str, user_prompt: str) -> dict:
-    """同步调用 LLM，支持 MiniMax primary + DeepSeek fallback"""
-    minimax_key = settings.minimax_api_key
+    """同步调用 LLM，DeepSeek only"""
     deepseek_key = settings.deepseek_api_key
-
-    if minimax_key:
-        try:
-            with httpx.Client(timeout=httpx.Timeout(120.0)) as client:
-                r = client.post(
-                    "https://api.minimax.chat/v1/chat/completions",
-                    json={
-                        "model": "MiniMax-M2.7",
-                        "messages": [
-                            {"role": "system", "content": system_prompt.strip()},
-                            {"role": "user", "content": user_prompt},
-                        ],
-                        "temperature": 0.3,
-                        "max_tokens": 4000,
-                    },
-                    headers={"Authorization": "Bearer " + minimax_key, "Content-Type": "application/json"},
-                )
-                r.raise_for_status()
-                resp = r.json()["choices"][0]["message"]["content"]
-                resp = re.sub(r"<thinking>.*?</thinking>", "", resp, flags=re.DOTALL)
-                result = _extract_json(resp)
-                if result:
-                    return result
-                logger.warning(f"[JokeToPremise] MiniMax parse failed: {resp[:100]}")
-        except Exception as exc:
-            logger.warning(f"[JokeToPremise] MiniMax failed: {exc}")
-
-    if deepseek_key:
-        try:
-            with httpx.Client(timeout=httpx.Timeout(120.0)) as client:
-                r = client.post(
-                    "https://api.deepseek.com/chat/completions",
-                    json={
-                        "model": "deepseek-chat",
-                        "messages": [
-                            {"role": "system", "content": system_prompt.strip()},
-                            {"role": "user", "content": user_prompt},
-                        ],
-                        "temperature": 0.3,
-                        "max_tokens": 4000,
-                    },
-                    headers={"Authorization": "Bearer " + deepseek_key, "Content-Type": "application/json"},
-                )
-                r.raise_for_status()
-                resp = r.json()["choices"][0]["message"]["content"]
-                result = _extract_json(resp)
-                if result:
-                    return result
-                first = resp.find("{")
-                last = resp.rfind("}")
-                if first >= 0 and last > first:
-                    return json.loads(resp[first : last + 1])
-                return {"error": "Parse Failed: " + resp[:150]}
-        except Exception as exc:
-            return {"error": "DeepSeek failed: " + str(exc)}
-
-    return {"error": "No LLM API key configured"}
+    if not deepseek_key:
+        return {"error": "DeepSeek API key 未配置"}
+    try:
+        with httpx.Client(timeout=httpx.Timeout(120.0)) as client:
+            r = client.post(
+                "https://api.deepseek.com/chat/completions",
+                json={
+                    "model": "deepseek-chat",
+                    "messages": [
+                        {"role": "system", "content": system_prompt.strip()},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 4000,
+                },
+                headers={"Authorization": "Bearer " + deepseek_key, "Content-Type": "application/json"},
+            )
+            r.raise_for_status()
+            resp = r.json()["choices"][0]["message"]["content"]
+            result = _extract_json(resp)
+            if result:
+                return result
+            first = resp.find("{")
+            last = resp.rfind("}")
+            if first >= 0 and last > first:
+                return json.loads(resp[first : last + 1])
+            return {"error": "返回格式解析失败，请稍后重试"}
+    except httpx.HTTPStatusError:
+        logger.warning("[JokeToPremise] DeepSeek HTTP error")
+        return {"error": "AI 服务暂时不可用，请稍后重试"}
+    except Exception as exc:
+        logger.warning(f"[JokeToPremise] DeepSeek failed: {exc}")
+        return {"error": "AI 服务暂时不可用，请稍后重试"}
 
 
 # ─── Stream Generator ─────────────────────────────────────────────────────────

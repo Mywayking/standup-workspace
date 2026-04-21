@@ -234,127 +234,79 @@ SYSTEM_PROMPT = """
 """
 
 
-async def _analyze_all_fast(client: httpx.AsyncClient, text: str, minimax_key: str, deepseek_key: str) -> dict:
+async def _analyze_all_fast(client: httpx.AsyncClient, text: str, deepseek_key: str) -> dict:
     user = ("段子内容：\n" + text + "\n\n"
             "用单口喜剧优秀编剧的视角进行深度分析，严格按Schema格式返回JSON，不要输出Schema以外任何文字。")
     system = SYSTEM_PROMPT.strip()
 
-    # Try MiniMax first (fast, ~30s for long output)
-    if minimax_key:
-        try:
-            r = await client.post(
-                "https://api.minimax.chat/v1/chat/completions",
-                json={
-                    "model": "MiniMax-M2.7",
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user},
-                    ],
-                    "temperature": 0.2,
-                    "max_tokens": 6000,
-                },
-                headers={"Authorization": "Bearer " + minimax_key, "Content-Type": "application/json"},
-                timeout=httpx.Timeout(120.0),
-            )
-            r.raise_for_status()
-            resp_content = r.json()["choices"][0]["message"]["content"]
-            # Strip thinking blocks before JSON extraction
-            resp_content = re.sub(r"<thinking>.*?</thinking>", "", resp_content, flags=re.DOTALL)
-            result = _extract_json(resp_content)
-            if result:
-                return result
-            logger.warning("[MiniMax parse failed, trying DeepSeek]")
-        except Exception as exc:
-            logger.warning(f"[MiniMax primary failed: {exc}], falling back to DeepSeek")
-    else:
-        logger.warning("[MiniMax key not configured, using DeepSeek]")
+    if not deepseek_key:
+        return {"error": "DeepSeek API key 未配置"}
 
-    # Fallback: DeepSeek (slower, ~90-120s for long output)
-    if deepseek_key:
-        try:
-            r = await client.post(
-                "https://api.deepseek.com/chat/completions",
-                json={
-                    "model": "deepseek-chat",
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user},
-                    ],
-                    "temperature": 0.2,
-                    "max_tokens": 6000,
-                },
-                headers={"Authorization": "Bearer " + deepseek_key, "Content-Type": "application/json"},
-                timeout=httpx.Timeout(150.0),
-            )
-            r.raise_for_status()
-            resp_content = r.json()["choices"][0]["message"]["content"]
-            result = _extract_json(resp_content)
-            if result:
-                return result
-            first_brace = resp_content.find('{')
-            last_brace = resp_content.rfind('}')
-            if first_brace >= 0 and last_brace > first_brace:
-                import json as _json
-                return _json.loads(resp_content[first_brace:last_brace+1])
-            return {"error": "Parse Failed: " + resp_content[:150]}
-        except Exception as exc:
-            return {"error": "DeepSeek fallback failed: " + str(exc)}
-
-    return {"error": "No LLM API key configured"}
+    try:
+        r = await client.post(
+            "https://api.deepseek.com/chat/completions",
+            json={
+                "model": "deepseek-chat",
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "temperature": 0.2,
+                "max_tokens": 6000,
+            },
+            headers={"Authorization": "Bearer " + deepseek_key, "Content-Type": "application/json"},
+            timeout=httpx.Timeout(150.0),
+        )
+        r.raise_for_status()
+        resp_content = r.json()["choices"][0]["message"]["content"]
+        result = _extract_json(resp_content)
+        if result:
+            return result
+        first_brace = resp_content.find('{')
+        last_brace = resp_content.rfind('}')
+        if first_brace >= 0 and last_brace > first_brace:
+            import json as _json
+            return _json.loads(resp_content[first_brace:last_brace+1])
+        return {"error": "返回格式解析失败，请稍后重试"}
+    except httpx.HTTPStatusError as exc:
+        logger.warning(f"[DeepSeek HTTP error in analyze: {exc}]")
+        return {"error": "AI 服务暂时不可用，请稍后重试"}
+    except Exception as exc:
+        logger.warning(f"[DeepSeek failed in analyze: {exc}]")
+        return {"error": "AI 服务暂时不可用，请稍后重试"}
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_text(req: AnalyzeRequest):
     if len(req.text) < 20:
-        raise HTTPException(400, "Text too short (min 20 chars)")
+        raise HTTPException(400, "段子内容太短了（至少20字）")
 
-    minimax_key = settings.minimax_api_key or ""
     deepseek_key = settings.deepseek_api_key or ""
-    if not minimax_key and not deepseek_key:
-        raise HTTPException(503, "No LLM API key configured (MINIMAX or DEEPSEEK)")
+    if not deepseek_key:
+        raise HTTPException(503, "DeepSeek API key 未配置，请联系管理员")
 
     raw_segments = _split_segments(req.text)
     raw_segments = raw_segments[:20]
 
     async with httpx.AsyncClient() as client:
-        if req.mode == "quick":
-            result = await _analyze_all_fast(client, req.text, minimax_key, deepseek_key)
-            if "error" in result:
-                raise HTTPException(500, result["error"])
+        result = await _analyze_all_fast(client, req.text, deepseek_key)
+        if "error" in result:
+            raise HTTPException(500, result["error"])
 
-            return AnalyzeResponse(
-                evaluation=result.get("evaluation", {}),
-                performer_tags=result.get("performer_tags", []),
-                premise=result.get("premise", ""),
-                theme_refined=result.get("theme_refined", ""),
-                comedy_type=result.get("comedy_type", ""),
-                structures=result.get("structures", ""),
-                techniques=result.get("techniques", []),
-                segments=result.get("segments", []),
-                improved_script=result.get("improved_script", ""),
-                script_changes=result.get("script_changes", []),
-                style_hints=result.get("style_hints", []),
-                next_suggestion=result.get("next_suggestion", ""),
-            )
-        else:
-            result = await _analyze_all_fast(client, req.text, minimax_key, deepseek_key)
-            if "error" in result:
-                raise HTTPException(500, result["error"])
-
-            return AnalyzeResponse(
-                evaluation=result.get("evaluation", {}),
-                performer_tags=result.get("performer_tags", []),
-                premise=result.get("premise", ""),
-                theme_refined=result.get("theme_refined", ""),
-                comedy_type=result.get("comedy_type", ""),
-                structures=result.get("structures", ""),
-                techniques=result.get("techniques", []),
-                segments=result.get("segments", []),
-                improved_script=result.get("improved_script", ""),
-                script_changes=result.get("script_changes", []),
-                style_hints=result.get("style_hints", []),
-                next_suggestion=result.get("next_suggestion", ""),
-            )
+        return AnalyzeResponse(
+            evaluation=result.get("evaluation", {}),
+            performer_tags=result.get("performer_tags", []),
+            premise=result.get("premise", ""),
+            theme_refined=result.get("theme_refined", ""),
+            comedy_type=result.get("comedy_type", ""),
+            structures=result.get("structures", ""),
+            techniques=result.get("techniques", []),
+            segments=result.get("segments", []),
+            improved_script=result.get("improved_script", ""),
+            script_changes=result.get("script_changes", []),
+            style_hints=result.get("style_hints", []),
+            next_suggestion=result.get("next_suggestion", ""),
+        )
 
 
 @router.post("/analyze/stream")
@@ -363,28 +315,25 @@ async def analyze_stream(req: AnalyzeRequest):
     import asyncio
 
     if len(req.text) < 20:
-        raise HTTPException(400, "Text too short (min 20 chars)")
+        raise HTTPException(400, "段子内容太短了（至少20字）")
 
-    minimax_key = settings.minimax_api_key or ""
     deepseek_key = settings.deepseek_api_key or ""
-    if not minimax_key and not deepseek_key:
-        raise HTTPException(503, "No LLM API key configured (MINIMAX or DEEPSEEK)")
+    if not deepseek_key:
+        raise HTTPException(503, "DeepSeek API key 未配置，请联系管理员")
 
     user = "段子内容：\n" + req.text + "\n\n用单口喜剧优秀编剧的视角进行深度分析，严格按Schema格式返回JSON，不要输出Schema以外任何文字。"
 
     request_id = str(uuid.uuid4())[:8]
     start_time = time.time()
-    last_heartbeat = [0.0]  # mutable container for closure
+    last_heartbeat = [0.0]
 
     async def event_generator():
         import json as _json
-        json_parts = []
         client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
-        heartbeat_interval = 5.0  # seconds
 
         async def send_heartbeat():
             elapsed = time.time() - start_time
-            if elapsed - last_heartbeat[0] >= heartbeat_interval:
+            if elapsed - last_heartbeat[0] >= 5.0:
                 last_heartbeat[0] = elapsed
                 yield f"event: progress\ndata: " + _json.dumps({
                     "request_id": request_id,
@@ -396,115 +345,72 @@ async def analyze_stream(req: AnalyzeRequest):
             yield "event: error\ndata: " + _json.dumps({"error": msg, "request_id": request_id}) + "\n\n"
 
         try:
-            # Try MiniMax streaming first
-            if minimax_key:
-                try:
-                    async with client.stream(
-                        "POST",
-                        "https://api.minimax.chat/v1/chat/completions",
-                        json={
-                            "model": "MiniMax-M2.7",
-                            "messages": [
-                                {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                                {"role": "user", "content": user},
-                            ],
-                            "temperature": 0.2,
-                            "max_tokens": 6000,
-                            "stream": True,
-                        },
-                        headers={"Authorization": f"Bearer {minimax_key}", "Content-Type": "application/json"},
-                    ) as resp:
-                        if resp.status_code != 200:
-                            body = (await resp.aread()).decode()
-                            err_body = body[:200]
-                            async for hb in send_heartbeat(): yield hb
-                            async for err in send_error(f"MiniMax {resp.status_code}: {err_body}"): yield err
-                            return
-
-                        async for line in resp.aiter_lines():
-                            line = line.strip()
-                            if not line.startswith("data: "):
-                                continue
-                            data_str = line[6:]
-                            if data_str == "[DONE]":
-                                break
-                            try:
-                                obj = _json.loads(data_str)
-                                token = obj.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                                if token:
-                                    # Strip thinking block tags from token
-                                    token = re.sub(r"<thinking>.*?</thinking>", "", token, flags=re.DOTALL)
-                                    safe = token.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
-                                    yield "event: token\ndata: " + safe + "\n\n"
-                                    json_parts.append(token)
-                            except Exception:
-                                pass
-                            async for hb in send_heartbeat(): yield hb
-                    # If we get here with content, stream is done
-                except Exception as mmx_exc:
-                    logger.warning(f"[MiniMax streaming failed: {mmx_exc}], trying DeepSeek")
-                    json_parts = []  # reset since MiniMax failed
-            else:
-                logger.warning("[MiniMax key not set, using DeepSeek streaming]")
-
-            # DeepSeek fallback (non-streaming, run in executor)
-            if not json_parts and deepseek_key:
-                try:
-                    loop = asyncio.get_running_loop()
-                    fallback = await loop.run_in_executor(
-                        None, lambda: _call_deepseek_sync(user, deepseek_key)
-                    )
-                    if "error" not in fallback:
-                        final = {
-                            "evaluation": fallback.get("evaluation", {}),
-                            "performer_tags": fallback.get("performer_tags", []),
-                            "premise": fallback.get("premise", ""),
-                            "theme_refined": fallback.get("theme_refined", ""),
-                            "comedy_type": fallback.get("comedy_type", ""),
-                            "structures": fallback.get("structures", ""),
-                            "techniques": fallback.get("techniques", []),
-                            "segments": fallback.get("segments", []),
-                            "improved_script": fallback.get("improved_script", ""),
-                            "script_changes": fallback.get("script_changes", []),
-                            "style_hints": fallback.get("style_hints", []),
-                            "next_suggestion": fallback.get("next_suggestion", ""),
-                        }
-                        yield "event: done\ndata: " + _json.dumps(final) + "\n\n"
-                        return
-                    else:
-                        yield "event: error\ndata: " + _json.dumps({"error": fallback.get("error", "DeepSeek fallback failed")}) + "\n\n"
-                        return
-                except Exception as exc2:
-                    yield "event: error\ndata: " + _json.dumps({"error": f"Fallback failed: {exc2}"}) + "\n\n"
+            async with client.stream(
+                "POST",
+                "https://api.deepseek.com/chat/completions",
+                json={
+                    "model": "deepseek-chat",
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT.strip()},
+                        {"role": "user", "content": user},
+                    ],
+                    "temperature": 0.2,
+                    "max_tokens": 6000,
+                    "stream": True,
+                },
+                headers={"Authorization": f"Bearer {deepseek_key}", "Content-Type": "application/json"},
+            ) as resp:
+                if resp.status_code != 200:
+                    async for err in send_error("AI 服务暂时不可用，请稍后重试"): yield err
                     return
+
+                json_parts = []
+                async for line in resp.aiter_lines():
+                    line = line.strip()
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        obj = _json.loads(data_str)
+                        token = obj.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        if token:
+                            encoded = _json.dumps(token)
+                            inner = encoded[1:-1]  # strip JSON quotes
+                            yield "event: token\ndata: " + inner + "\n\n"
+                            json_parts.append(token)
+                    except Exception:
+                        pass
+                    async for hb in send_heartbeat(): yield hb
+
+                full_content = "".join(json_parts)
+                result = _extract_json(full_content)
+                if result:
+                    final = {
+                        "evaluation": result.get("evaluation", {}),
+                        "performer_tags": result.get("performer_tags", []),
+                        "premise": result.get("premise", ""),
+                        "theme_refined": result.get("theme_refined", ""),
+                        "comedy_type": result.get("comedy_type", ""),
+                        "structures": result.get("structures", ""),
+                        "techniques": result.get("techniques", []),
+                        "segments": result.get("segments", []),
+                        "improved_script": result.get("improved_script", ""),
+                        "script_changes": result.get("script_changes", []),
+                        "style_hints": result.get("style_hints", []),
+                        "next_suggestion": result.get("next_suggestion", ""),
+                    }
+                    yield "event: done\ndata: " + _json.dumps(final) + "\n\n"
+                else:
+                    async for err in send_error("解析失败，请稍后重试"): yield err
+        except httpx.HTTPStatusError:
+            async for err in send_error("AI 服务暂时不可用，请稍后重试"): yield err
         except Exception as exc:
-            async for err in send_error(str(exc)): yield err
-            return
+            logger.warning(f"[DeepSeek streaming failed: {exc}]")
+            async for err in send_error("AI 服务暂时不可用，请稍后重试"): yield err
         finally:
             await client.aclose()
-
-        # Parse accumulated JSON
-        full_content = "".join(json_parts)
-        result = _extract_json(full_content)
-        if result:
-            final = {
-                "evaluation": result.get("evaluation", {}),
-                "performer_tags": result.get("performer_tags", []),
-                "premise": result.get("premise", ""),
-                "theme_refined": result.get("theme_refined", ""),
-                "comedy_type": result.get("comedy_type", ""),
-                "structures": result.get("structures", ""),
-                "techniques": result.get("techniques", []),
-                "segments": result.get("segments", []),
-                "improved_script": result.get("improved_script", ""),
-                "script_changes": result.get("script_changes", []),
-                "style_hints": result.get("style_hints", []),
-                "next_suggestion": result.get("next_suggestion", ""),
-            }
-            yield "event: done\ndata: " + _json.dumps(final) + "\n\n"
-        else:
-            yield "event: error\ndata: " + _json.dumps({"error": "解析失败，请稍后重试", "request_id": request_id}) + "\n\n"
-
 
     return StreamingResponse(
         event_generator(),

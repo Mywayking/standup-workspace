@@ -138,65 +138,42 @@ SYSTEM_PROMPT = """
 """
 
 
-async def _call_llm(client: httpx.AsyncClient, user_prompt: str, minimax_key: str, deepseek_key: str) -> dict:
-    """Call MiniMax first, fallback to DeepSeek."""
-    if minimax_key:
-        try:
-            r = await client.post(
-                "https://api.minimax.chat/v1/chat/completions",
-                json={
-                    "model": "MiniMax-M2.7",
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 4000,
-                },
-                headers={"Authorization": "Bearer " + minimax_key, "Content-Type": "application/json"},
-                timeout=httpx.Timeout(120.0),
-            )
-            r.raise_for_status()
-            resp = r.json()["choices"][0]["message"]["content"]
-            resp = re.sub(r"<thinking>.*?</thinking>", "", resp, flags=re.DOTALL)
-            result = _extract_json(resp)
-            if result:
-                return result
-            logger.warning("[MiniMax parse failed in extract-premise]")
-        except Exception as exc:
-            logger.warning(f"[MiniMax failed in extract-premise: {exc}]")
-
-    if deepseek_key:
-        try:
-            r = await client.post(
-                "https://api.deepseek.com/chat/completions",
-                json={
-                    "model": "deepseek-chat",
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 4000,
-                },
-                headers={"Authorization": "Bearer " + deepseek_key, "Content-Type": "application/json"},
-                timeout=httpx.Timeout(150.0),
-            )
-            r.raise_for_status()
-            resp = r.json()["choices"][0]["message"]["content"]
-            result = _extract_json(resp)
-            if result:
-                return result
-            first = resp.find('{')
-            last = resp.rfind('}')
-            if first >= 0 and last > first:
-                import json as _j
-                return _j.loads(resp[first:last+1])
-            return {"error": "Parse Failed: " + resp[:150]}
-        except Exception as exc:
-            return {"error": "DeepSeek fallback failed: " + str(exc)}
-
-    return {"error": "No LLM API key configured"}
+async def _call_llm(client: httpx.AsyncClient, user_prompt: str, deepseek_key: str) -> dict:
+    """Call DeepSeek only."""
+    if not deepseek_key:
+        return {"error": "DeepSeek API key 未配置"}
+    try:
+        r = await client.post(
+            "https://api.deepseek.com/chat/completions",
+            json={
+                "model": "deepseek-chat",
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT.strip()},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": 0.3,
+                "max_tokens": 4000,
+            },
+            headers={"Authorization": "Bearer " + deepseek_key, "Content-Type": "application/json"},
+            timeout=httpx.Timeout(150.0),
+        )
+        r.raise_for_status()
+        resp = r.json()["choices"][0]["message"]["content"]
+        result = _extract_json(resp)
+        if result:
+            return result
+        first = resp.find('{')
+        last = resp.rfind('}')
+        if first >= 0 and last > first:
+            import json as _j
+            return _j.loads(resp[first:last+1])
+        return {"error": "返回格式解析失败，请稍后重试"}
+    except httpx.HTTPStatusError:
+        logger.warning(f"[DeepSeek HTTP error in extract-premise]")
+        return {"error": "AI 服务暂时不可用，请稍后重试"}
+    except Exception as exc:
+        logger.warning(f"[DeepSeek failed in extract-premise: {exc}]")
+        return {"error": "AI 服务暂时不可用，请稍后重试"}
 
 
 @router.post("/extract-premise")
@@ -208,10 +185,9 @@ async def extract_premise(req: dict):
     if len(text) < 5:
         raise HTTPException(400, "Text too short (min 5 chars)")
 
-    minimax_key = settings.minimax_api_key or ""
     deepseek_key = settings.deepseek_api_key or ""
-    if not minimax_key and not deepseek_key:
-        raise HTTPException(503, "No LLM API key configured")
+    if not deepseek_key:
+        raise HTTPException(503, "DeepSeek API key 未配置，请联系管理员")
 
     user_prompt = (
         "以下是一段脱口秀演员的素材，请提炼出喜剧前提：\n\n"
@@ -220,7 +196,7 @@ async def extract_premise(req: dict):
     )
 
     async with httpx.AsyncClient() as client:
-        result = await _call_llm(client, user_prompt, minimax_key, deepseek_key)
+        result = await _call_llm(client, user_prompt, deepseek_key)
 
     if "error" in result:
         raise HTTPException(500, result["error"])
@@ -233,12 +209,11 @@ async def extract_premise_stream(req: dict):
     import asyncio
     text = req.get("text", "").strip()
     if len(text) < 5:
-        raise HTTPException(400, "Text too short (min 5 chars)")
+        raise HTTPException(400, "素材太短了（至少5字）")
 
-    minimax_key = settings.minimax_api_key or ""
     deepseek_key = settings.deepseek_api_key or ""
-    if not minimax_key and not deepseek_key:
-        raise HTTPException(503, "No LLM API key configured")
+    if not deepseek_key:
+        raise HTTPException(503, "DeepSeek API key 未配置，请联系管理员")
 
     user_prompt = (
         "以下是一段脱口秀演员的素材，请提炼出喜剧前提：\n\n"
@@ -251,13 +226,11 @@ async def extract_premise_stream(req: dict):
 
     async def event_generator():
         import json as _json
-        json_parts = []
         client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
-        heartbeat_interval = 5.0
 
         async def send_heartbeat():
             elapsed = time.time() - start_time
-            if elapsed - last_heartbeat[0] >= heartbeat_interval:
+            if elapsed - last_heartbeat[0] >= 5.0:
                 last_heartbeat[0] = elapsed
                 yield f"event: progress\ndata: " + _json.dumps({
                     "elapsed": int(elapsed),
@@ -268,77 +241,58 @@ async def extract_premise_stream(req: dict):
             yield f"event: error\ndata: " + _json.dumps({"error": msg}) + "\n\n"
 
         try:
-            if minimax_key:
-                try:
-                    async with client.stream(
-                        "POST",
-                        "https://api.minimax.chat/v1/chat/completions",
-                        json={
-                            "model": "MiniMax-M2.7",
-                            "messages": [
-                                {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                                {"role": "user", "content": user_prompt},
-                            ],
-                            "temperature": 0.3,
-                            "max_tokens": 4000,
-                            "stream": True,
-                        },
-                        headers={"Authorization": f"Bearer {minimax_key}", "Content-Type": "application/json"},
-                    ) as resp:
-                        if resp.status_code != 200:
-                            body = (await resp.aread()).decode()
-                            async for err in send_error(f"MiniMax {resp.status_code}: {body[:200]}"): yield err
-                            return
-
-                        async for line in resp.aiter_lines():
-                            line = line.strip()
-                            if not line.startswith("data: "):
-                                continue
-                            data_str = line[6:]
-                            if data_str == "[DONE]":
-                                break
-                            try:
-                                obj = _json.loads(data_str)
-                                token = obj.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                                if token:
-                                    token = re.sub(r"<thinking>.*?</thinking>", "", token, flags=re.DOTALL)
-                                    safe = token.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
-                                    yield f"event: token\ndata: " + safe + "\n\n"
-                                    json_parts.append(token)
-                            except Exception:
-                                pass
-                            async for hb in send_heartbeat(): yield hb
-                except Exception as mmx_exc:
-                    logger.warning(f"[MiniMax streaming failed: {mmx_exc}]")
-                    json_parts = []
-
-            if not json_parts and deepseek_key:
-                try:
-                    loop = asyncio.get_running_loop()
-                    fallback = await loop.run_in_executor(
-                        None, lambda: _call_deepseek_sync(user_prompt, deepseek_key)
-                    )
-                    if "error" not in fallback:
-                        yield f"event: done\ndata: " + _json.dumps(fallback) + "\n\n"
-                        return
-                    else:
-                        yield f"event: error\ndata: " + _json.dumps({"error": fallback.get("error")}) + "\n\n"
-                        return
-                except Exception as exc2:
-                    yield f"event: error\ndata: " + _json.dumps({"error": f"Fallback failed: {exc2}"}) + "\n\n"
+            async with client.stream(
+                "POST",
+                "https://api.deepseek.com/chat/completions",
+                json={
+                    "model": "deepseek-chat",
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT.strip()},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 4000,
+                    "stream": True,
+                },
+                headers={"Authorization": f"Bearer {deepseek_key}", "Content-Type": "application/json"},
+            ) as resp:
+                if resp.status_code != 200:
+                    async for err in send_error("AI 服务暂时不可用，请稍后重试"): yield err
                     return
+
+                json_parts = []
+                async for line in resp.aiter_lines():
+                    line = line.strip()
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        obj = _json.loads(data_str)
+                        token = obj.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        if token:
+                            encoded = _json.dumps(token)
+                            inner = encoded[1:-1]  # strip JSON quotes
+                            yield f"event: token\ndata: " + inner + "\n\n"
+                            json_parts.append(token)
+                    except Exception:
+                        pass
+                    async for hb in send_heartbeat(): yield hb
+
+                full = "".join(json_parts)
+                result = _extract_json(full)
+                if result:
+                    yield f"event: done\ndata: " + _json.dumps(result) + "\n\n"
+                else:
+                    async for err in send_error("解析失败，请稍后重试"): yield err
+        except httpx.HTTPStatusError:
+            async for err in send_error("AI 服务暂时不可用，请稍后重试"): yield err
         except Exception as exc:
-            async for err in send_error(str(exc)): yield err
-            return
+            logger.warning(f"[DeepSeek streaming failed: {exc}]")
+            async for err in send_error("AI 服务暂时不可用，请稍后重试"): yield err
         finally:
             await client.aclose()
-
-        full = "".join(json_parts)
-        result = _extract_json(full)
-        if result:
-            yield f"event: done\ndata: " + _json.dumps(result) + "\n\n"
-        else:
-            async for err in send_error("解析失败，请稍后重试"): yield err
 
     return StreamingResponse(
         event_generator(),
