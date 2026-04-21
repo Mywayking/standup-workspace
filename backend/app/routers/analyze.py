@@ -3,11 +3,31 @@ Simplified analysis router — no project/script concepts.
 User pastes text → gets analysis back.
 """
 import asyncio
+import json
 import logging
 import re
 import time
 import uuid
 from typing import Optional
+
+
+def _classify_error(exc: Exception) -> str:
+    exc_str = str(exc).lower()
+    if isinstance(exc, (httpx.TimeoutException, asyncio.TimeoutError)):
+        return "内容正在酝酿中，网络有点慢，稍后重试一次~"
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+        s = exc.response.status_code
+        if s == 429: return "服务器需要喘口气，稍等 5 秒再试就好~"
+        if s == 500: return "AI 正在重新思考，稍后重试一次~"
+        if s in (502, 503, 504): return "服务正在维护中，稍后重试~"
+        if s in (401, 403): return "服务配置异常，请联系管理员~"
+        if s == 400: return "输入内容超出限制，请精简后重试~"
+    if isinstance(exc, httpx.ConnectError):
+        return "网络有点问题，稍后重试一次~"
+    if "json" in exc_str or isinstance(exc, (json.JSONDecodeError, ValueError)):
+        return "这次生成的内容太长了，放短一点试试~"
+    return "内容正在酝酿中，稍后重试一次~"
+
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -270,10 +290,10 @@ async def _analyze_all_fast(client: httpx.AsyncClient, text: str, deepseek_key: 
         return {"error": "返回格式解析失败，请稍后重试"}
     except httpx.HTTPStatusError as exc:
         logger.warning(f"[DeepSeek HTTP error in analyze: {exc}]")
-        return {"error": "AI 服务暂时不可用，请稍后重试"}
+        return {"error": _classify_error(exc)}
     except Exception as exc:
         logger.warning(f"[DeepSeek failed in analyze: {exc}]")
-        return {"error": "AI 服务暂时不可用，请稍后重试"}
+        return {"error": _classify_error(exc)}
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
@@ -361,7 +381,7 @@ async def analyze_stream(req: AnalyzeRequest):
                 headers={"Authorization": f"Bearer {deepseek_key}", "Content-Type": "application/json"},
             ) as resp:
                 if resp.status_code != 200:
-                    async for err in send_error("AI 服务暂时不可用，请稍后重试"): yield err
+                    async for err in send_error(_classify_error(exc)): yield err
                     return
 
                 json_parts = []
@@ -405,10 +425,10 @@ async def analyze_stream(req: AnalyzeRequest):
                 else:
                     async for err in send_error("解析失败，请稍后重试"): yield err
         except httpx.HTTPStatusError:
-            async for err in send_error("AI 服务暂时不可用，请稍后重试"): yield err
+            async for err in send_error(_classify_error(exc)): yield err
         except Exception as exc:
             logger.warning(f"[DeepSeek streaming failed: {exc}]")
-            async for err in send_error("AI 服务暂时不可用，请稍后重试"): yield err
+            async for err in send_error(_classify_error(exc)): yield err
         finally:
             await client.aclose()
 

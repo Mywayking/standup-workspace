@@ -3,6 +3,8 @@
 输入：一个已有前提
 输出：当前问题判断、6个新角度、推荐角度、继续展开建议
 """
+import asyncio
+import json
 import logging
 import re
 import time
@@ -18,6 +20,43 @@ from ..config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["find-angles"])
+
+
+def _classify_error(exc: Exception) -> str:
+    """
+    将异常分类，返回用户友好的提示消息。
+    消息风格：温暖、不暴露技术细节、给用户可操作的下一步。
+    """
+    exc_str = str(exc).lower()
+
+    # 1. 超时
+    if isinstance(exc, (httpx.TimeoutException, asyncio.TimeoutError)):
+        return "内容正在酝酿中，网络有点慢，稍后重试一次~"
+
+    # 2. 限流 429
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+        status = exc.response.status_code
+        if status == 429:
+            return "服务器需要喘口气，稍等 5 秒再试就好~"
+        if status == 500:
+            return "AI 正在重新思考，稍后重试一次~"
+        if status in (502, 503, 504):
+            return "服务正在维护中，稍后重试~"
+        if status == 401 or status == 403:
+            return "服务配置异常，请联系管理员~"
+        if status == 400:
+            return "输入内容超出限制，请精简后重试~"
+
+    # 3. 网络错误
+    if isinstance(exc, httpx.ConnectError):
+        return "网络有点问题，稍后重试一次~"
+
+    # 4. 解析错误
+    if "json" in exc_str or isinstance(exc, (json.JSONDecodeError, ValueError)):
+        return "这次生成的内容太长了，放短一点试试~"
+
+    # 5. 默认
+    return "内容正在酝酿中，稍后重试一次~"
 
 
 def _extract_json(text: str):
@@ -208,10 +247,10 @@ async def _call_llm(client: httpx.AsyncClient, user_prompt: str, deepseek_key: s
         return {"error": "返回格式解析失败，请稍后重试"}
     except httpx.HTTPStatusError as exc:
         logger.warning(f"[DeepSeek HTTP error in find-angles: {exc}]")
-        return {"error": "AI 服务返回错误，请稍后重试"}
+        return {"error": _classify_error(exc)}
     except Exception as exc:
         logger.warning(f"[DeepSeek failed in find-angles: {exc}]")
-        return {"error": "AI 服务暂时不可用，请稍后重试"}
+        return {"error": _classify_error(exc)}
 
 
 @router.post("/find-angles")
@@ -293,7 +332,7 @@ async def find_angles_stream(req: dict):
                 ) as resp:
                     if resp.status_code != 200:
                         body = (await resp.aread()).decode()
-                        async for err in send_error("AI 服务暂时不可用，请稍后重试"): yield err
+                        async for err in send_error("内容正在酝酿中，稍后重试一次~"): yield err
                         return
 
                     json_parts = []
@@ -325,11 +364,11 @@ async def find_angles_stream(req: dict):
                         yield f"event: done\ndata: " + _json.dumps(result) + "\n\n"
                     else:
                         async for err in send_error("解析失败，请稍后重试"): yield err
-            except httpx.HTTPStatusError:
-                async for err in send_error("AI 服务暂时不可用，请稍后重试"): yield err
+            except httpx.HTTPStatusError as exc:
+                async for err in send_error(_classify_error(exc)): yield err
             except Exception as exc:
                 logger.warning(f"[DeepSeek streaming failed: {exc}]")
-                async for err in send_error("AI 服务暂时不可用，请稍后重试"): yield err
+                async for err in send_error(_classify_error(exc)): yield err
         finally:
             await client.aclose()
 

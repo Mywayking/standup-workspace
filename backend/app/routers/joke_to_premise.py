@@ -7,6 +7,7 @@
   Phase 1 - 梗拆解：识别梗类型、核心冲突、类比对象、情绪、人设、笑点机制
   Phase 2 - 前提生成：基于拆解结果生成差异化前提候选
 """
+import asyncio
 import json
 import logging
 import re
@@ -22,6 +23,24 @@ from ..config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["joke-to-premise"])
+
+
+def _classify_error(exc: Exception) -> str:
+    exc_str = str(exc).lower()
+    if isinstance(exc, (httpx.TimeoutException, asyncio.TimeoutError)):
+        return "内容正在酝酿中，网络有点慢，稍后重试一次~"
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+        s = exc.response.status_code
+        if s == 429: return "服务器需要喘口气，稍等 5 秒再试就好~"
+        if s == 500: return "AI 正在重新思考，稍后重试一次~"
+        if s in (502, 503, 504): return "服务正在维护中，稍后重试~"
+        if s in (401, 403): return "服务配置异常，请联系管理员~"
+        if s == 400: return "输入内容超出限制，请精简后重试~"
+    if isinstance(exc, httpx.ConnectError):
+        return "网络有点问题，稍后重试一次~"
+    if "json" in exc_str or isinstance(exc, (json.JSONDecodeError, ValueError)):
+        return "这次生成的内容太长了，放短一点试试~"
+    return "内容正在酝酿中，稍后重试一次~"
 
 # ─── Request / Response Schemas ──────────────────────────────────────────────
 
@@ -202,10 +221,10 @@ def _call_llm_sync(system_prompt: str, user_prompt: str) -> dict:
             return {"error": "返回格式解析失败，请稍后重试"}
     except httpx.HTTPStatusError:
         logger.warning("[JokeToPremise] DeepSeek HTTP error")
-        return {"error": "AI 服务暂时不可用，请稍后重试"}
+        return {"error": _classify_error(exc)}
     except Exception as exc:
         logger.warning(f"[JokeToPremise] DeepSeek failed: {exc}")
-        return {"error": "AI 服务暂时不可用，请稍后重试"}
+        return {"error": _classify_error(exc)}
 
 
 # ─── Stream Generator ─────────────────────────────────────────────────────────
