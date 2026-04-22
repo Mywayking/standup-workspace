@@ -56,7 +56,7 @@ function formatJTPShare(premises: PremiseCandidate[]) {
 }
 const STYLES = ["真实观察", "自嘲", "毒舌", "冷幽默", "夸张"];
 
-export default function JokeToPremiseTab({ onAction }: { onAction?: (action: string, data?: string) => void }) {
+export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?: (action: string, data?: string) => void; onResultDone?: (content: string, rawData: unknown) => void }) {
   const [inputText, setInputText] = useState("");
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState("");
@@ -340,7 +340,7 @@ export default function JokeToPremiseTab({ onAction }: { onAction?: (action: str
 
         {/* Done: show premise cards */}
         {hasResult && (
-          <JTPResultView premises={stream.premises} onAction={onAction} onRegenerate={handleRegenerate} />
+          <JTPResultView premises={stream.premises} onAction={onAction} onRegenerate={handleRegenerate} onResultDone={onResultDone} />
         )}
       </div>
 
@@ -392,7 +392,7 @@ export default function JokeToPremiseTab({ onAction }: { onAction?: (action: str
 
 // ─── Result View ────────────────────────────────────────────────────────────────
 
-function JTPResultView({ premises, onAction, onRegenerate }: { premises: PremiseCandidate[]; onAction?: (action: string, data?: string) => void; onRegenerate?: () => void }) {
+function JTPResultView({ premises, onAction, onRegenerate, onResultDone }: { premises: PremiseCandidate[]; onAction?: (action: string, data?: string) => void; onRegenerate?: () => void; onResultDone?: (content: string, rawData: unknown) => void }) {
   return (
     <div className="space-y-4">
       {/* Regenerate button */}

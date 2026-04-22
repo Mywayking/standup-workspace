@@ -50,7 +50,7 @@ function formatAnglesShare(result: AnglesResult) {
   return lines.join("\n");
 }
 
-export default function AnglesTab({ onAction, initialData, onClearPending }: { onAction?: (action: string, data?: string) => void; initialData?: string; onClearPending?: () => void }) {
+export default function AnglesTab({ onAction, initialData, onClearPending, onResultDone }: { onAction?: (action: string, data?: string) => void; initialData?: string; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown) => void }) {
   const [inputText, setInputText] = useState(initialData ?? "");
   const [stream, setStream] = useState<StreamingState>({
     phase: "idle",
@@ -328,7 +328,7 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
         )}
 
         {hasResult && stream.result && (
-          <AnglesResultView result={stream.result} onAction={onAction} copiedId={copiedId} onCopy={(id) => { setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); }} onRegenerate={handleRegenerate} />
+          <AnglesResultView result={stream.result} onAction={onAction} copiedId={copiedId} onCopy={(id) => { setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); }} onRegenerate={handleRegenerate} onResultDone={onResultDone} />
         )}
       </div>
 
@@ -377,7 +377,7 @@ export default function AnglesTab({ onAction, initialData, onClearPending }: { o
   );
 }
 
-function AnglesResultView({ result, onAction, copiedId, onCopy, onRegenerate }: { result: AnglesResult; onAction?: (action: string, data?: string) => void; copiedId: string | null; onCopy: (id: string) => void; onRegenerate?: () => void }) {
+function AnglesResultView({ result, onAction, copiedId, onCopy, onRegenerate, onResultDone }: { result: AnglesResult; onAction?: (action: string, data?: string) => void; copiedId: string | null; onCopy: (id: string) => void; onRegenerate?: () => void; onResultDone?: (content: string, rawData: unknown) => void }) {
   const [expandedAngle, setExpandedAngle] = useState<number | null>(null);
 
   return (

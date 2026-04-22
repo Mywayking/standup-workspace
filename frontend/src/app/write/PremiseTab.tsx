@@ -56,7 +56,17 @@ function formatPremiseShare(result: PremiseResult) {
   return lines.join("\n");
 }
 
-export default function PremiseTab({ onAction, initialData, onClearPending }: { onAction?: (action: string, data?: string) => void; initialData?: string; onClearPending?: () => void }) {
+export default function PremiseTab({
+  onAction,
+  initialData,
+  onClearPending,
+  onResultDone,
+}: {
+  onAction?: (action: string, data?: string) => void;
+  initialData?: string;
+  onClearPending?: () => void;
+  onResultDone?: (content: string, rawData: unknown, sourceStep?: string) => void;
+}) {
   const [inputText, setInputText] = useState(initialData ?? "");
   const [stream, setStream] = useState<StreamingState>({
     phase: "idle",
@@ -348,7 +358,12 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
 
         {/* Done: show result */}
         {hasResult && stream.result ? (
-          <PremiseResultView result={stream.result} onAction={onAction} onRegenerate={handleRegenerate} />
+          <PremiseResultView
+            result={stream.result}
+            onAction={onAction}
+            onRegenerate={handleRegenerate}
+            onResultDone={onResultDone}
+          />
         ) : null}
       </div>
 
@@ -396,7 +411,17 @@ export default function PremiseTab({ onAction, initialData, onClearPending }: { 
 
 // ─── Result sub-component (defined before use) ────────────────────────────────
 
-function PremiseResultView({ result, onAction, onRegenerate }: { result: PremiseResult; onAction?: (action: string, data?: string) => void; onRegenerate?: () => void }) {
+function PremiseResultView({
+  result,
+  onAction,
+  onRegenerate,
+  onResultDone,
+}: {
+  result: PremiseResult;
+  onAction?: (action: string, data?: string) => void;
+  onRegenerate?: () => void;
+  onResultDone?: (content: string, rawData: unknown, sourceStep?: string) => void;
+}) {
   const themeItem = { label: "主题", value: result.theme, icon: "📋" };
   const attitudeItem = { label: "态度", value: result.attitude, icon: "💢" };
   const conflictItem = { label: "核心矛盾", value: result.conflict, icon: "⚡" };
@@ -483,6 +508,14 @@ function PremiseResultView({ result, onAction, onRegenerate }: { result: Premise
               className="px-4 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 transition-colors"
             >
               🔍 用这个前提找角度
+            <button
+              onClick={() => {
+                onResultDone?.(result.recommendation.text, result, "前提提炼");
+              }}
+              className="px-3 py-1.5 bg-orange-50 border border-orange-200 text-orange-700 text-xs font-medium rounded-lg hover:bg-orange-100 transition-colors"
+            >
+              💾 保存到会话
+            </button>
             </button>
           </div>
         </div>

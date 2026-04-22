@@ -868,6 +868,7 @@ function StreamingResultCard({
             { label: "增加包袱", action: "more_punchlines" },
             { label: "转综艺版", action: "variety_style" },
             { label: "保存素材", action: "save_kb" },
+            { label: "保存会话", action: "save_session" },
           ].map((btn) => (
             <button
               key={btn.action}
@@ -928,7 +929,7 @@ function StreamingResultCard({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function WritePage({ initialText, onClearPending }: { initialText?: string; onClearPending?: () => void }) {
+export default function WritePage({ initialText, onClearPending, onResultDone }: { initialText?: string; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown) => void }) {
   const [inputText, setInputText] = useState(initialText ?? "");
   const [stream, setStream] = useState<StreamingState>({
     phase: "idle",
