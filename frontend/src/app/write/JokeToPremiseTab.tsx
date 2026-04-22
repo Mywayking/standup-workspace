@@ -56,7 +56,7 @@ function formatJTPShare(premises: PremiseCandidate[]) {
 }
 const STYLES = ["真实观察", "自嘲", "毒舌", "冷幽默", "夸张"];
 
-export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?: (action: string, data?: string) => void; onResultDone?: (content: string, rawData: unknown) => void }) {
+export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?: (action: string, data?: string, sourceStep?: string) => void; onResultDone?: (content: string, rawData: unknown) => void }) {
   const [inputText, setInputText] = useState("");
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState("");

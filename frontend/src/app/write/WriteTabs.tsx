@@ -19,35 +19,39 @@ const TAB_LABELS: Record<Tab, string> = {
 
 function WriteTabsInner() {
   const [activeTab, setActiveTab] = useState<Tab>("premise");
-  const { addCard, initSession } = useWorkflow();
+  const { addCard, appendRewriteVersion, initSession } = useWorkflow();
 
   // Pending data from cross-tab navigation
-  const [pendingPremise, setPendingPremise] = useState<string>("");
-  const [pendingAngle, setPendingAngle] = useState<string>("");
-  const [pendingRewrite, setPendingRewrite] = useState<string>("");
+  const [pendingPremise, setPendingPremise] = useState<{ text: string; sourceStep?: string } | null>(null);
+  const [pendingAngle, setPendingAngle] = useState<{ text: string; sourceStep?: string } | null>(null);
+  const [pendingRewrite, setPendingRewrite] = useState<{ text: string; sourceStep?: string } | null>(null);
 
   // Init session when user first types something in any tab
   const ensureSession = (sourceInput: string) => {
     // We'll init lazily when the first result comes in
   };
 
-  const handleAction = (action: string, data?: string) => {
+  const handleAction = (action: string, data?: string, sourceStep?: string) => {
     if (action === "go-angles" && data !== undefined) {
-      setPendingAngle(data);
+      setPendingAngle({ text: data, sourceStep });
       setActiveTab("angles");
     } else if (action === "go-rewrite" && data !== undefined) {
-      setPendingRewrite(data);
+      setPendingRewrite({ text: data, sourceStep });
       setActiveTab("rewrite");
     } else if (action === "go-premise" && data !== undefined) {
-      setPendingPremise(data);
+      setPendingPremise({ text: data, sourceStep });
       setActiveTab("premise");
     }
   };
 
   // Called by each tab when a result is done — registers a card in the session
   const handleResultDone = (type: "premise" | "angles" | "rewrite" | "joke_to_premise", content: string, rawData: unknown, sourceStep?: string) => {
-    const title = content.slice(0, 40) + (content.length > 40 ? "…" : "");
-    addCard({ type, title, content, rawData, status: "success", sourceStep });
+    if (type === "rewrite") {
+      appendRewriteVersion(content, rawData, sourceStep);
+    } else {
+      const title = content.slice(0, 40) + (content.length > 40 ? "…" : "");
+      addCard({ type, title, content, rawData, status: "success", sourceStep });
+    }
   };
 
   return (
@@ -66,9 +70,9 @@ function WriteTabsInner() {
                 key={key}
                 onClick={() => {
                   setActiveTab(key);
-                  if (key !== "premise") setPendingPremise("");
-                  if (key !== "angles") setPendingAngle("");
-                  if (key !== "rewrite") setPendingRewrite("");
+                  if (key !== "premise") setPendingPremise(null);
+                  if (key !== "angles") setPendingAngle(null);
+                  if (key !== "rewrite") setPendingRewrite(null);
                 }}
                 className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex flex-col items-start gap-0.5 ${
                   activeTab === key
@@ -98,8 +102,9 @@ function WriteTabsInner() {
               {activeTab === "premise" && (
                 <PremiseTab
                   onAction={handleAction}
-                  initialData={pendingPremise}
-                  onClearPending={() => setPendingPremise("")}
+                  initialData={pendingPremise?.text}
+                sourceStep={pendingPremise?.sourceStep}
+                  onClearPending={() => setPendingPremise(null)}
                   onResultDone={(content, rawData, sourceStep) =>
                     handleResultDone("premise", content, rawData, sourceStep)
                   }
@@ -116,8 +121,9 @@ function WriteTabsInner() {
               {activeTab === "angles" && (
                 <AnglesTab
                   onAction={handleAction}
-                  initialData={pendingAngle}
-                  onClearPending={() => setPendingAngle("")}
+                  initialData={pendingAngle?.text}
+                  sourceStep={pendingAngle?.sourceStep}
+                  onClearPending={() => setPendingAngle(null)}
                   onResultDone={(content, rawData) =>
                     handleResultDone("angles", content, rawData)
                   }
@@ -125,8 +131,9 @@ function WriteTabsInner() {
               )}
               {activeTab === "rewrite" && (
                 <WriteClient
-                  initialText={pendingRewrite}
-                  onClearPending={() => setPendingRewrite("")}
+                  initialText={pendingRewrite?.text}
+                  sourceStep={pendingRewrite?.sourceStep}
+                  onClearPending={() => setPendingRewrite(null)}
                   onResultDone={(content, rawData) =>
                     handleResultDone("rewrite", content, rawData)
                   }

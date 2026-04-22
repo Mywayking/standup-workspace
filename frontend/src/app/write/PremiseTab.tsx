@@ -59,11 +59,13 @@ function formatPremiseShare(result: PremiseResult) {
 export default function PremiseTab({
   onAction,
   initialData,
+  sourceStep,
   onClearPending,
   onResultDone,
 }: {
-  onAction?: (action: string, data?: string) => void;
+  onAction?: (action: string, data?: string, sourceStep?: string) => void;
   initialData?: string;
+  sourceStep?: string;
   onClearPending?: () => void;
   onResultDone?: (content: string, rawData: unknown, sourceStep?: string) => void;
 }) {
@@ -252,6 +254,11 @@ export default function PremiseTab({
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-800">提炼前提</h2>
           </div>
+          {sourceStep && (
+            <div className="mb-2 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg">
+              <p className="text-xs text-blue-600">来自：{sourceStep}</p>
+            </div>
+          )}
           <p className="text-sm text-gray-500 mb-3 leading-relaxed">💡 {GUIDE_TEXT}</p>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">

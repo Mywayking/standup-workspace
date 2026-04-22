@@ -929,7 +929,7 @@ function StreamingResultCard({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function WritePage({ initialText, onClearPending, onResultDone }: { initialText?: string; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown) => void }) {
+export default function WritePage({ initialText, sourceStep, onClearPending, onResultDone }: { initialText?: string; sourceStep?: string; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown) => void }) {
   const [inputText, setInputText] = useState(initialText ?? "");
   const [stream, setStream] = useState<StreamingState>({
     phase: "idle",
