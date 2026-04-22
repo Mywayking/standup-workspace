@@ -84,6 +84,11 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setSessions(loadSessions());
+    // UX-4 Step 2: clean up legacy tab-level history keys
+    try {
+      localStorage.removeItem("premise_history");
+      localStorage.removeItem("angles_history");
+    } catch {}
   }, []);
 
   const initSession = useCallback((sourceInput: string) => {
