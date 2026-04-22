@@ -60,15 +60,15 @@ function formatPremiseShare(result: PremiseResult) {
 export default function PremiseTab({
   onAction,
   initialData,
-  sourceStep,
+  sourcePath,
   onClearPending,
   onResultDone,
 }: {
-  onAction?: (action: string, data?: string, sourceStep?: string) => void;
+  onAction?: (action: string, data?: string, sourcePath?: string[]) => void;
   initialData?: string;
-  sourceStep?: string;
+  sourcePath?: string[];
   onClearPending?: () => void;
-  onResultDone?: (content: string, rawData: unknown, sourceStep?: string) => void;
+  onResultDone?: (content: string, rawData: unknown, sourcePath?: string[]) => void;
 }) {
   const [inputText, setInputText] = useState(initialData ?? "");
   const [stream, setStream] = useState<StreamingState>({
@@ -206,7 +206,7 @@ export default function PremiseTab({
       }
     } catch (err: any) {
       clearTimeout(timeoutId);
-      const msg = String(err);
+      const msg = mapUserError(err);
       let userMsg = "生成失败，请重试";
       if (err.name === "AbortError") {
         userMsg = "请求超时（120秒），请稍后重试";
@@ -249,9 +249,9 @@ export default function PremiseTab({
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-800">提炼前提</h2>
           </div>
-          {sourceStep && (
+          {sourcePath && sourcePath.length > 0 && (
             <div className="mb-2 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg">
-              <p className="text-xs text-blue-600">来自：{sourceStep}</p>
+              <p className="text-xs text-blue-600">来自：{sourcePath?.join(" → ")}</p>
             </div>
           )}
           <p className="text-sm text-gray-500 mb-3 leading-relaxed">💡 {GUIDE_TEXT}</p>
@@ -344,6 +344,7 @@ export default function PremiseTab({
             onAction={onAction}
             onRegenerate={handleRegenerate}
             onResultDone={onResultDone}
+            sourcePath={sourcePath}
           />
         ) : null}
       </div>
@@ -392,16 +393,19 @@ export default function PremiseTab({
 
 // ─── Result sub-component (defined before use) ────────────────────────────────
 
+import { mapUserError } from "@/utils/errorMapper";
 function PremiseResultView({
   result,
   onAction,
   onRegenerate,
   onResultDone,
+  sourcePath,
 }: {
   result: PremiseResult;
   onAction?: (action: string, data?: string) => void;
   onRegenerate?: () => void;
-  onResultDone?: (content: string, rawData: unknown, sourceStep?: string) => void;
+  onResultDone?: (content: string, rawData: unknown, sourcePath?: string[]) => void;
+  sourcePath?: string[];
 }) {
   const themeItem = { label: "主题", value: result.theme, icon: "📋" };
   const attitudeItem = { label: "态度", value: result.attitude, icon: "💢" };
@@ -492,7 +496,7 @@ function PremiseResultView({
             </button>
             <button
               onClick={() => {
-                onResultDone?.(result.recommendation.text, result, "前提提炼");
+                onResultDone?.(result.recommendation.text, result, sourcePath || ["前提提炼"]);
               }}
               className="px-3 py-1.5 bg-orange-50 border border-orange-200 text-orange-700 text-xs font-medium rounded-lg hover:bg-orange-100 transition-colors"
             >

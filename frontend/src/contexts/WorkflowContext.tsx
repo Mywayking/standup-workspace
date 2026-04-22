@@ -14,7 +14,7 @@ export interface WorkflowCard {
   content: string;
   rawData: unknown;
   status: CardStatus;
-  sourceStep?: string;
+  sourcePath: string[];
   version?: number;
   createdAt: string;
 }
@@ -70,10 +70,10 @@ interface WorkflowContextValue {
   resetSession: () => void;
   addCard: (card: Omit<WorkflowCard, "id" | "createdAt">) => string;
   deleteCard: (cardId: string) => void;
-  appendRewriteVersion: (rewriteContent: string, rawData: unknown, sourceStep?: string) => string;
+  appendRewriteVersion: (rewriteContent: string, rawData: unknown, sourcePath: string[]) => string;
   // Handoff: SessionPanel calls this to trigger WriteTabs' pending fill + tab switch
-  handoff: (type: CardType, content: string, sourceStep?: string) => void;
-  setHandoffCallback: (fn: (type: CardType, content: string, sourceStep?: string) => void) => void;
+  handoff: (type: CardType, content: string, sourcePath: string[]) => void;
+  setHandoffCallback: (fn: (type: CardType, content: string, sourcePath: string[]) => void) => void;
   sessions: WorkflowSession[];
   restoreSession: (id: string) => void;
   deleteSession: (id: string) => void;
@@ -96,7 +96,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<WorkflowSession | null>(null);
   const [sessions, setSessions] = useState<WorkflowSession[]>([]);
   // Use ref so SessionPanel can call the callback without re-render trigger
-  const handoffRef = useRef<((type: CardType, content: string, sourceStep?: string) => void) | null>(null);
+  const handoffRef = useRef<((type: CardType, content: string, sourcePath: string[]) => void) | null>(null);
 
   useEffect(() => {
     setSessions(loadSessions());
@@ -164,7 +164,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const appendRewriteVersion = useCallback((rewriteContent: string, rawData: unknown, sourceStep?: string): string => {
+  const appendRewriteVersion = useCallback((rewriteContent: string, rawData: unknown, sourcePath: string[]): string => {
     const id = genId("card");
     const now = new Date().toISOString();
 
@@ -181,7 +181,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
         content: rewriteContent,
         rawData,
         status: "success",
-        sourceStep,
+        sourcePath,
         version: newVersion,
         createdAt: now,
       };
@@ -192,11 +192,11 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     return id;
   }, []);
 
-  const handoff = useCallback((type: CardType, content: string, sourceStep?: string) => {
-    handoffRef.current?.(type, content, sourceStep);
+  const handoff = useCallback((type: CardType, content: string, sourcePath: string[]) => {
+    handoffRef.current?.(type, content, sourcePath);
   }, []);
 
-  const setHandoffCallback = useCallback((fn: (type: CardType, content: string, sourceStep?: string) => void) => {
+  const setHandoffCallback = useCallback((fn: (type: CardType, content: string, sourcePath: string[]) => void) => {
     handoffRef.current = fn;
   }, []);
 

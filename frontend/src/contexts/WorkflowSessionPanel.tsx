@@ -44,12 +44,12 @@ function CardItem({ card, isLatest }: { card: WorkflowCard; isLatest?: boolean }
   const handleSendTo = (targetType: CardType) => {
     const myLabel = CARD_TYPE_LABELS[card.type];
     // 追加来源链：跳过与上一个节点相同的重复（如前提→角度→角度→改稿）
-    const sourceChain = card.sourceStep
-      ? card.sourceStep.endsWith(myLabel)
-        ? card.sourceStep  // 已以当前卡类型结尾，不重复追加
-        : `${card.sourceStep} → ${myLabel}`
-      : myLabel;
-    handoff(targetType, card.content, sourceChain);
+    const newPath = card.sourcePath
+      ? (card.sourcePath[card.sourcePath.length - 1] === myLabel
+          ? card.sourcePath  // 已以当前卡类型结尾，不重复追加
+          : [...card.sourcePath, CARD_TYPE_LABELS[targetType]])
+      : [CARD_TYPE_LABELS[targetType]];
+    handoff(targetType, card.content, newPath);
     setShowMore(false);
   };
 
@@ -96,10 +96,10 @@ function CardItem({ card, isLatest }: { card: WorkflowCard; isLatest?: boolean }
       </div>
 
       {/* 来源链 */}
-      {card.sourceStep && (
+      {card.sourcePath?.length > 0 && (
         <div className="mb-1.5">
           <span className="text-xs text-gray-400">
-            {card.sourceStep}
+            {card.sourcePath.join(" → ")}
           </span>
         </div>
       )}

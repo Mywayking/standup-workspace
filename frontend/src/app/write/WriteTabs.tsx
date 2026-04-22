@@ -24,14 +24,14 @@ function WriteTabsInner() {
   const { session, addCard, appendRewriteVersion, initSession, setHandoffCallback } = useWorkflow();
 
   // Pending data from cross-tab navigation
-  const [pendingPremise, setPendingPremise] = useState<{ text: string; sourceStep?: string } | null>(null);
-  const [pendingAngle, setPendingAngle] = useState<{ text: string; sourceStep?: string } | null>(null);
-  const [pendingRewrite, setPendingRewrite] = useState<{ text: string; sourceStep?: string } | null>(null);
+  const [pendingPremise, setPendingPremise] = useState<{ text: string; sourcePath: string[] } | null>(null);
+  const [pendingAngle, setPendingAngle] = useState<{ text: string; sourcePath: string[] } | null>(null);
+  const [pendingRewrite, setPendingRewrite] = useState<{ text: string; sourcePath: string[] } | null>(null);
 
   const { toast } = useToast();
 
   // Centralized handoff: set pending state + navigate to target tab
-  const handleHandoff = (targetType: CardType, content: string, sourceStep?: string) => {
+  const handleHandoff = (targetType: CardType, content: string, sourcePath: string[]) => {
     const label: Record<CardType, string> = {
       source: "素材",
       premise: "提炼前提",
@@ -40,15 +40,15 @@ function WriteTabsInner() {
       joke_to_premise: "梗写前提",
     };
     if (targetType === "premise") {
-      setPendingPremise({ text: content, sourceStep });
+      setPendingPremise({ text: content, sourcePath });
       setActiveTab("premise");
       toast(`已带入「${label[targetType]}」`);
     } else if (targetType === "angles") {
-      setPendingAngle({ text: content, sourceStep });
+      setPendingAngle({ text: content, sourcePath });
       setActiveTab("angles");
       toast(`已带入「${label[targetType]}」`);
     } else if (targetType === "rewrite") {
-      setPendingRewrite({ text: content, sourceStep });
+      setPendingRewrite({ text: content, sourcePath });
       setActiveTab("rewrite");
       toast(`已带入「${label[targetType]}」`);
     } else if (targetType === "joke_to_premise") {
@@ -63,15 +63,15 @@ function WriteTabsInner() {
   }, [setHandoffCallback]);
 
   // Also handle internal tab action buttons
-  const handleAction = (action: string, data?: string, sourceStep?: string) => {
+  const handleAction = (action: string, data?: string, sourcePathArg?: string[]) => {
     if (action === "go-angles" && data !== undefined) {
-      setPendingAngle({ text: data, sourceStep });
+      setPendingAngle({ text: data, sourcePath: [...(sourcePathArg || []), "找角度"] });
       setActiveTab("angles");
     } else if (action === "go-rewrite" && data !== undefined) {
-      setPendingRewrite({ text: data, sourceStep });
+      setPendingRewrite({ text: data, sourcePath: [...(sourcePathArg || []), "改稿"] });
       setActiveTab("rewrite");
     } else if (action === "go-premise" && data !== undefined) {
-      setPendingPremise({ text: data, sourceStep });
+      setPendingPremise({ text: data, sourcePath: [...(sourcePathArg || []), "前提提炼"] });
       setActiveTab("premise");
     } else if (action === "go-joke_to_premise" && data !== undefined) {
       setActiveTab("joke_to_premise");
@@ -83,17 +83,17 @@ function WriteTabsInner() {
     type: "premise" | "angles" | "rewrite" | "joke_to_premise",
     content: string,
     rawData: unknown,
-    sourceStep?: string,
+    sourcePath: string[],
     sourceInput?: string,
   ) => {
     if (!session) {
       initSession(sourceInput || content.slice(0, 100));
     }
     if (type === "rewrite") {
-      appendRewriteVersion(content, rawData, sourceStep);
+      appendRewriteVersion(content, rawData, sourcePath);
     } else {
       const title = content.slice(0, 40) + (content.length > 40 ? "…" : "");
-      addCard({ type, title, content, rawData, status: "success", sourceStep });
+      addCard({ type, title, content, rawData, status: "success", sourcePath });
     }
   };
 
@@ -196,10 +196,10 @@ function WriteTabsInner() {
                 <PremiseTab
                   onAction={handleAction}
                   initialData={pendingPremise?.text}
-                  sourceStep={pendingPremise?.sourceStep}
+                  sourcePath={pendingPremise?.sourcePath}
                   onClearPending={() => setPendingPremise(null)}
-                  onResultDone={(content, rawData, sourceStep) =>
-                    safeHandleResultDone("premise", content, rawData, sourceStep)
+                  onResultDone={(content, rawData, sp) =>
+                    safeHandleResultDone("premise", content, rawData, sp || [])
                   }
                 />
               )}
@@ -207,7 +207,7 @@ function WriteTabsInner() {
                 <JokeToPremiseTab
                   onAction={handleAction}
                   onResultDone={(content, rawData) =>
-                    safeHandleResultDone("joke_to_premise", content, rawData)
+                    safeHandleResultDone("joke_to_premise", content, rawData, [])
                   }
                 />
               )}
@@ -215,20 +215,20 @@ function WriteTabsInner() {
                 <AnglesTab
                   onAction={handleAction}
                   initialData={pendingAngle?.text}
-                  sourceStep={pendingAngle?.sourceStep}
+                  sourcePath={pendingAngle?.sourcePath}
                   onClearPending={() => setPendingAngle(null)}
-                  onResultDone={(content, rawData, sourceStep) =>
-                    safeHandleResultDone("angles", content, rawData, sourceStep)
+                  onResultDone={(content, rawData, sp) =>
+                    safeHandleResultDone("angles", content, rawData, sp || [])
                   }
                 />
               )}
               {activeTab === "rewrite" && (
                 <WriteClient
                   initialText={pendingRewrite?.text}
-                  sourceStep={pendingRewrite?.sourceStep}
+                  sourcePath={pendingRewrite?.sourcePath}
                   onClearPending={() => setPendingRewrite(null)}
-                  onResultDone={(content, rawData, sourceStep) =>
-                    safeHandleResultDone("rewrite", content, rawData, sourceStep)
+                  onResultDone={(content, rawData, sp) =>
+                    safeHandleResultDone("rewrite", content, rawData, sp || [])
                   }
                 />
               )}

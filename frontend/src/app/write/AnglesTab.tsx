@@ -51,7 +51,7 @@ function formatAnglesShare(result: AnglesResult) {
   return lines.join("\n");
 }
 
-export default function AnglesTab({ onAction, initialData, sourceStep, onClearPending, onResultDone }: { onAction?: (action: string, data?: string, sourceStep?: string) => void; initialData?: string; sourceStep?: string; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown, sourceStep?: string) => void }) {
+export default function AnglesTab({ onAction, initialData, sourcePath, onClearPending, onResultDone }: { onAction?: (action: string, data?: string, sourcePath?: string[]) => void; initialData?: string; sourcePath?: string[]; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown, sourcePath?: string[]) => void }) {
   const [inputText, setInputText] = useState(initialData ?? "");
   const [stream, setStream] = useState<StreamingState>({
     phase: "idle",
@@ -181,7 +181,7 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
       }
     } catch (err: any) {
       clearTimeout(timeoutId);
-      const msg = String(err);
+      const msg = mapUserError(err);
       let userMsg = "生成失败，请重试";
       if (err.name === "AbortError") {
         userMsg = "请求超时（120秒），请稍后重试";
@@ -221,9 +221,9 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
             💡 {GUIDE_TEXT}
           </p>
 
-          {sourceStep && (
+          {sourcePath && sourcePath.length > 0 && (
             <div className="mb-2 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg">
-              <p className="text-xs text-blue-600">来自：{sourceStep}</p>
+              <p className="text-xs text-blue-600">来自：{sourcePath.join(" → ")}</p>
             </div>
           )}
 
@@ -301,7 +301,7 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
         )}
 
         {hasResult && stream.result && (
-          <AnglesResultView result={stream.result} onAction={onAction} sourceStep={sourceStep} copiedId={copiedId} onCopy={(id) => { setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); }} onRegenerate={handleRegenerate} onResultDone={onResultDone} />
+          <AnglesResultView result={stream.result} onAction={onAction} sourcePath={sourcePath} copiedId={copiedId} onCopy={(id) => { setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); }} onRegenerate={handleRegenerate} onResultDone={onResultDone} />
         )}
       </div>
 
@@ -350,7 +350,8 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
   );
 }
 
-function AnglesResultView({ result, onAction, sourceStep, copiedId, onCopy, onRegenerate, onResultDone }: { result: AnglesResult; onAction?: (action: string, data?: string) => void; sourceStep?: string; copiedId: string | null; onCopy: (id: string) => void; onRegenerate?: () => void; onResultDone?: (content: string, rawData: unknown, sourceStep?: string) => void }) {
+import { mapUserError } from "@/utils/errorMapper";
+function AnglesResultView({ result, onAction, sourcePath, copiedId, onCopy, onRegenerate, onResultDone }: { result: AnglesResult; onAction?: (action: string, data?: string) => void; sourcePath?: string[]; copiedId: string | null; onCopy: (id: string) => void; onRegenerate?: () => void; onResultDone?: (content: string, rawData: unknown, sourcePath?: string[]) => void }) {
   const [expandedAngle, setExpandedAngle] = useState<number | null>(null);
 
   // 结果生成后自动保存到 session（只调用一次）
@@ -359,9 +360,9 @@ function AnglesResultView({ result, onAction, sourceStep, copiedId, onCopy, onRe
     if (result && !hasCalledRef.current) {
       hasCalledRef.current = true;
       const text = result.recommendation?.name || JSON.stringify(result);
-      onResultDone?.(text, result, sourceStep || "角度分析");
+      onResultDone?.(text, result, sourcePath || ["角度分析"]);
     }
-  }, [result, sourceStep]);
+  }, [result, sourcePath]);
 
   return (
     <div className="space-y-4">

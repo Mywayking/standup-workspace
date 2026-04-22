@@ -56,7 +56,7 @@ function formatJTPShare(premises: PremiseCandidate[]) {
 }
 const STYLES = ["真实观察", "自嘲", "毒舌", "冷幽默", "夸张"];
 
-export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?: (action: string, data?: string, sourceStep?: string) => void; onResultDone?: (content: string, rawData: unknown) => void }) {
+export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?: (action: string, data?: string, sourcePath?: string[]) => void; onResultDone?: (content: string, rawData: unknown) => void }) {
   const [inputText, setInputText] = useState("");
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState("");
@@ -186,7 +186,7 @@ export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?
       }
     } catch (err: any) {
       clearTimeout(timeoutId);
-      const msg = String(err);
+      const msg = mapUserError(err);
       let userMsg = "生成失败，请重试";
       if (err.name === "AbortError") {
         userMsg = "请求超时（180秒），请稍后重试";
@@ -395,6 +395,7 @@ export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?
 
 // ─── Result View ────────────────────────────────────────────────────────────────
 
+import { mapUserError } from "@/utils/errorMapper";
 function JTPResultView({ premises, onAction, onRegenerate, onResultDone }: { premises: PremiseCandidate[]; onAction?: (action: string, data?: string) => void; onRegenerate?: () => void; onResultDone?: (content: string, rawData: unknown) => void }) {
   return (
     <div className="space-y-4">

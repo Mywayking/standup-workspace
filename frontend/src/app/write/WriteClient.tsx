@@ -789,7 +789,7 @@ function StreamingResultCard({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function WritePage({ initialText, sourceStep, onClearPending, onResultDone }: { initialText?: string; sourceStep?: string; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown, sourceStep?: string) => void }) {
+export default function WritePage({ initialText, sourcePath, onClearPending, onResultDone }: { initialText?: string; sourcePath?: string[]; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown, sourcePath?: string[]) => void }) {
   const [inputText, setInputText] = useState(initialText ?? "");
   const [stream, setStream] = useState<StreamingState>({
     phase: "idle",
@@ -833,7 +833,7 @@ export default function WritePage({ initialText, sourceStep, onClearPending, onR
     if (stream.phase === "done" && stream.result && !hasCalledResultRef.current) {
       hasCalledResultRef.current = true;
       const text = typeof stream.result === 'string' ? stream.result : JSON.stringify(stream.result);
-      onResultDone?.(text, stream.result, sourceStep || "改稿");
+      onResultDone?.(text, stream.result, sourcePath || ["改稿"]);
     }
   }, [stream.phase, stream.result]);
 
