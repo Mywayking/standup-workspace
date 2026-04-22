@@ -227,8 +227,8 @@ function WriteTabsInner() {
                   initialText={pendingRewrite?.text}
                   sourceStep={pendingRewrite?.sourceStep}
                   onClearPending={() => setPendingRewrite(null)}
-                  onResultDone={(content, rawData) =>
-                    safeHandleResultDone("rewrite", content, rawData)
+                  onResultDone={(content, rawData, sourceStep) =>
+                    safeHandleResultDone("rewrite", content, rawData, sourceStep)
                   }
                 />
               )}

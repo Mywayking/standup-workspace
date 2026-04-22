@@ -186,11 +186,14 @@ export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?
       }
     } catch (err: any) {
       clearTimeout(timeoutId);
+      const msg = String(err);
+      let userMsg = "生成失败，请重试";
       if (err.name === "AbortError") {
-        setStream((s) => ({ ...s, phase: "error", error: "请求超时（180秒）" }));
-      } else {
-        setStream((s) => ({ ...s, phase: "error", error: String(err) }));
+        userMsg = "请求超时（180秒），请稍后重试";
+      } else if (msg.includes("network") || msg.includes("Failed to fetch") || msg.includes("fetch failed")) {
+        userMsg = "网络连接异常，请检查网络后重试";
       }
+      setStream((s) => ({ ...s, phase: "error", error: userMsg }));
     } finally {
       abortRef.current = null;
     }

@@ -156,7 +156,7 @@ function HistorySessionItem({
 }: {
   s: { id: string; sourceInput: string; cards: WorkflowCard[]; createdAt: string; updatedAt: string };
   onRestore: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete?: (id: string) => void;
 }) {
   const date = new Date(s.updatedAt).toLocaleDateString("zh-CN", {
     month: "numeric",
@@ -188,12 +188,14 @@ function HistorySessionItem({
       >
         继续
       </button>
-      <button
-        onClick={() => onDelete(s.id)}
-        className="text-xs text-gray-400 hover:text-red-400 shrink-0"
-      >
-        删除
-      </button>
+      {onDelete && (
+        <button
+          onClick={() => onDelete(s.id)}
+          className="text-xs text-gray-400 hover:text-red-400 shrink-0"
+        >
+          删除
+        </button>
+      )}
     </div>
   );
 }
@@ -217,7 +219,7 @@ function EmptyState() {
                 key={s.id}
                 s={s}
                 onRestore={restoreSession}
-                onDelete={() => {}}
+                onDelete={undefined}
               />
             ))}
           </div>

@@ -489,6 +489,7 @@ function PremiseResultView({
               className="px-4 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 transition-colors"
             >
               🔍 用这个前提找角度
+            </button>
             <button
               onClick={() => {
                 onResultDone?.(result.recommendation.text, result, "前提提炼");
@@ -496,7 +497,6 @@ function PremiseResultView({
               className="px-3 py-1.5 bg-orange-50 border border-orange-200 text-orange-700 text-xs font-medium rounded-lg hover:bg-orange-100 transition-colors"
             >
               💾 保存到会话
-            </button>
             </button>
           </div>
         </div>

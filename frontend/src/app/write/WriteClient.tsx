@@ -789,7 +789,7 @@ function StreamingResultCard({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function WritePage({ initialText, sourceStep, onClearPending, onResultDone }: { initialText?: string; sourceStep?: string; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown) => void }) {
+export default function WritePage({ initialText, sourceStep, onClearPending, onResultDone }: { initialText?: string; sourceStep?: string; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown, sourceStep?: string) => void }) {
   const [inputText, setInputText] = useState(initialText ?? "");
   const [stream, setStream] = useState<StreamingState>({
     phase: "idle",
@@ -812,6 +812,7 @@ export default function WritePage({ initialText, sourceStep, onClearPending, onR
 
 
   const autoTriggered = useRef(false);
+  const analyzeBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // Auto-trigger analysis when initialText comes from cross-tab navigation
   useEffect(() => {
@@ -819,13 +820,22 @@ export default function WritePage({ initialText, sourceStep, onClearPending, onR
       autoTriggered.current = true;
       const timer = setTimeout(() => {
         if (inputText.trim().length >= 20) {
-          const btn = document.querySelector('button:has-text("开始分析")') as HTMLButtonElement | null;
-          if (btn && !btn.disabled) btn.click();
+          analyzeBtnRef.current?.click();
         }
       }, 500);
       return () => clearTimeout(timer);
     }
   }, [initialText, inputText]);
+
+  // P1-3 + P1-4: onResultDone called once when result is ready
+  const hasCalledResultRef = useRef(false);
+  useEffect(() => {
+    if (stream.phase === "done" && stream.result && !hasCalledResultRef.current) {
+      hasCalledResultRef.current = true;
+      const text = typeof stream.result === 'string' ? stream.result : JSON.stringify(stream.result);
+      onResultDone?.(text, stream.result, sourceStep || "改稿");
+    }
+  }, [stream.phase, stream.result]);
 
   // Global Cmd+K shortcut
   useEffect(() => {
