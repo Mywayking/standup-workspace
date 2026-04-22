@@ -209,8 +209,8 @@ function EmptyState() {
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-      <p className="text-sm font-bold text-gray-800 mb-1">创作历史</p>
-      <p className="text-xs text-gray-400 mb-4">还没有创作记录，开始一段新创作吧</p>
+      <p className="text-sm font-bold text-gray-800 mb-1">创作会话</p>
+      <p className="text-xs text-gray-400 mb-4">从左侧开始，生成结果会自动出现在这里</p>
 
       {sessions.length > 0 && (
         <>

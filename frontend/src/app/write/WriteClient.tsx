@@ -1152,6 +1152,7 @@ export default function WritePage({ initialText, sourceStep, onClearPending, onR
               )}
             </button>
             <p className="text-xs text-gray-400 text-center -mt-1">输入至少20字即可开始</p>
+            <p className="text-xs text-gray-400 text-center">生成后自动保存到右侧创作会话</p>
           </div>
 
           {/* Right: Feedback */}

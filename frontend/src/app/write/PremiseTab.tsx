@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useToast } from "@/components/Toast";
 
 interface StreamingState {
   phase: "idle" | "thinking" | "done" | "error";
@@ -76,6 +77,7 @@ export default function PremiseTab({
     result: null,
     error: null,
   });
+  const { toast } = useToast();
   const abortRef = useRef<AbortController | null>(null);
   const streamRef = useRef(stream);
   streamRef.current = stream;
@@ -287,6 +289,7 @@ export default function PremiseTab({
               {isStreaming ? "分析中..." : "开始提炼"}
             </button>
           </div>
+          <p className="text-xs text-gray-400 mt-2">生成后自动保存到右侧创作会话</p>
         </div>
 
         {/* Streaming state */}

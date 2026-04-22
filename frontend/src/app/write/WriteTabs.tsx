@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useToast } from "@/components/Toast";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { ToastProvider } from "@/components/Toast";
 import { WorkflowProvider, useWorkflow, type CardType } from "@/contexts/WorkflowContext";
 import WorkflowSessionPanel from "@/contexts/WorkflowSessionPanel";
 import WriteClient from "./WriteClient";
@@ -26,19 +28,32 @@ function WriteTabsInner() {
   const [pendingAngle, setPendingAngle] = useState<{ text: string; sourceStep?: string } | null>(null);
   const [pendingRewrite, setPendingRewrite] = useState<{ text: string; sourceStep?: string } | null>(null);
 
+  const { toast } = useToast();
+
   // Centralized handoff: set pending state + navigate to target tab
   const handleHandoff = (targetType: CardType, content: string, sourceStep?: string) => {
+    const label: Record<CardType, string> = {
+      source: "素材",
+      premise: "提炼前提",
+      angles: "找角度",
+      rewrite: "改稿",
+      joke_to_premise: "梗写前提",
+    };
     if (targetType === "premise") {
       setPendingPremise({ text: content, sourceStep });
       setActiveTab("premise");
+      toast(`已带入「${label[targetType]}」`);
     } else if (targetType === "angles") {
       setPendingAngle({ text: content, sourceStep });
       setActiveTab("angles");
+      toast(`已带入「${label[targetType]}」`);
     } else if (targetType === "rewrite") {
       setPendingRewrite({ text: content, sourceStep });
       setActiveTab("rewrite");
+      toast(`已带入「${label[targetType]}」`);
     } else if (targetType === "joke_to_premise") {
       setActiveTab("joke_to_premise");
+      toast(`已带入「梗写前提」`);
     }
   };
 
@@ -228,7 +243,9 @@ function WriteTabsInner() {
 export default function WriteTabs() {
   return (
     <WorkflowProvider>
-      <WriteTabsInner />
+      <ToastProvider>
+        <WriteTabsInner />
+      </ToastProvider>
     </WorkflowProvider>
   );
 }

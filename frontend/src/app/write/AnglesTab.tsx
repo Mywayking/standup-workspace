@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useToast } from "@/components/Toast";
 
 interface StreamingState {
   phase: "idle" | "thinking" | "done" | "error";
@@ -70,6 +71,7 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
 
   const autoTriggered = useRef(false);
   const regenerateRef = useRef<() => void>(null);
+  const { toast } = useToast();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-trigger analysis when initialData comes from cross-tab navigation
@@ -258,6 +260,7 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
             </div>
           </form>
           <p className="text-xs text-gray-300 mt-1.5">⌘ + Enter 快捷提交</p>
+          <p className="text-xs text-gray-400 mt-2">生成后自动保存到右侧创作会话</p>
         </div>
 
         {/* Streaming */}
