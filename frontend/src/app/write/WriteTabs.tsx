@@ -19,18 +19,35 @@ const TAB_LABELS: Record<Tab, string> = {
 
 function WriteTabsInner() {
   const [activeTab, setActiveTab] = useState<Tab>("premise");
-  const { addCard, appendRewriteVersion, initSession, setNavigateCallback } = useWorkflow();
+  const { session, addCard, appendRewriteVersion, initSession, setHandoffCallback } = useWorkflow();
 
   // Pending data from cross-tab navigation
   const [pendingPremise, setPendingPremise] = useState<{ text: string; sourceStep?: string } | null>(null);
   const [pendingAngle, setPendingAngle] = useState<{ text: string; sourceStep?: string } | null>(null);
   const [pendingRewrite, setPendingRewrite] = useState<{ text: string; sourceStep?: string } | null>(null);
 
-  // Init session when user first types something in any tab
-  const ensureSession = (sourceInput: string) => {
-    // We'll init lazily when the first result comes in
+  // Centralized handoff: set pending state + navigate to target tab
+  const handleHandoff = (targetType: CardType, content: string, sourceStep?: string) => {
+    if (targetType === "premise") {
+      setPendingPremise({ text: content, sourceStep });
+      setActiveTab("premise");
+    } else if (targetType === "angles") {
+      setPendingAngle({ text: content, sourceStep });
+      setActiveTab("angles");
+    } else if (targetType === "rewrite") {
+      setPendingRewrite({ text: content, sourceStep });
+      setActiveTab("rewrite");
+    } else if (targetType === "joke_to_premise") {
+      setActiveTab("joke_to_premise");
+    }
   };
 
+  // Register handoff callback with WorkflowContext (used by SessionPanel)
+  useEffect(() => {
+    setHandoffCallback(handleHandoff);
+  }, [setHandoffCallback]);
+
+  // Also handle internal tab action buttons
   const handleAction = (action: string, data?: string, sourceStep?: string) => {
     if (action === "go-angles" && data !== undefined) {
       setPendingAngle({ text: data, sourceStep });
@@ -42,13 +59,21 @@ function WriteTabsInner() {
       setPendingPremise({ text: data, sourceStep });
       setActiveTab("premise");
     } else if (action === "go-joke_to_premise" && data !== undefined) {
-      // joke_to_premise tab
       setActiveTab("joke_to_premise");
     }
   };
 
-  // Called by each tab when a result is done — registers a card in the session
-  const handleResultDone = (type: "premise" | "angles" | "rewrite" | "joke_to_premise", content: string, rawData: unknown, sourceStep?: string) => {
+  // Ensure session exists before saving; update sourceInput to actual user input
+  const safeHandleResultDone = (
+    type: "premise" | "angles" | "rewrite" | "joke_to_premise",
+    content: string,
+    rawData: unknown,
+    sourceStep?: string,
+    sourceInput?: string,
+  ) => {
+    if (!session) {
+      initSession(sourceInput || content.slice(0, 100));
+    }
     if (type === "rewrite") {
       appendRewriteVersion(content, rawData, sourceStep);
     } else {
@@ -106,10 +131,10 @@ function WriteTabsInner() {
                 <PremiseTab
                   onAction={handleAction}
                   initialData={pendingPremise?.text}
-                sourceStep={pendingPremise?.sourceStep}
+                  sourceStep={pendingPremise?.sourceStep}
                   onClearPending={() => setPendingPremise(null)}
                   onResultDone={(content, rawData, sourceStep) =>
-                    handleResultDone("premise", content, rawData, sourceStep)
+                    safeHandleResultDone("premise", content, rawData, sourceStep)
                   }
                 />
               )}
@@ -117,7 +142,7 @@ function WriteTabsInner() {
                 <JokeToPremiseTab
                   onAction={handleAction}
                   onResultDone={(content, rawData) =>
-                    handleResultDone("joke_to_premise", content, rawData)
+                    safeHandleResultDone("joke_to_premise", content, rawData)
                   }
                 />
               )}
@@ -128,7 +153,7 @@ function WriteTabsInner() {
                   sourceStep={pendingAngle?.sourceStep}
                   onClearPending={() => setPendingAngle(null)}
                   onResultDone={(content, rawData) =>
-                    handleResultDone("angles", content, rawData)
+                    safeHandleResultDone("angles", content, rawData)
                   }
                 />
               )}
@@ -138,7 +163,7 @@ function WriteTabsInner() {
                   sourceStep={pendingRewrite?.sourceStep}
                   onClearPending={() => setPendingRewrite(null)}
                   onResultDone={(content, rawData) =>
-                    handleResultDone("rewrite", content, rawData)
+                    safeHandleResultDone("rewrite", content, rawData)
                   }
                 />
               )}

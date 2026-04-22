@@ -36,9 +36,10 @@ function SourceBadge({ step, version }: { step?: string; version?: number }) {
 }
 
 function CardItem({ card }: { card: WorkflowCard }) {
-  const { deleteCard, addCard, navigateToTab } = useWorkflow();
+  const { deleteCard, addCard, handoff } = useWorkflow();
 
   const handleSendTo = (targetType: CardType) => {
+    // Add card to session panel
     addCard({
       type: targetType,
       title: card.type === targetType ? card.title : CARD_TYPE_LABELS[targetType],
@@ -47,7 +48,8 @@ function CardItem({ card }: { card: WorkflowCard }) {
       status: "success",
       sourceStep: CARD_TYPE_LABELS[card.type],
     });
-    navigateToTab(targetType);
+    // Use the handoff callback (registered by WriteTabs) to set pending + navigate
+    handoff(targetType, card.content, CARD_TYPE_LABELS[card.type]);
   };
 
   const sendTargets = SEND_TARGETS.filter((t) => t.type !== card.type);
