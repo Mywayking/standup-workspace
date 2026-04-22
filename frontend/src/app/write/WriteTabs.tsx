@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { WorkflowProvider, useWorkflow } from "@/contexts/WorkflowContext";
+import { WorkflowProvider, useWorkflow, type CardType } from "@/contexts/WorkflowContext";
 import WorkflowSessionPanel from "@/contexts/WorkflowSessionPanel";
 import WriteClient from "./WriteClient";
 import PremiseTab from "./PremiseTab";
@@ -19,7 +19,7 @@ const TAB_LABELS: Record<Tab, string> = {
 
 function WriteTabsInner() {
   const [activeTab, setActiveTab] = useState<Tab>("premise");
-  const { addCard, appendRewriteVersion, initSession } = useWorkflow();
+  const { addCard, appendRewriteVersion, initSession, setNavigateCallback } = useWorkflow();
 
   // Pending data from cross-tab navigation
   const [pendingPremise, setPendingPremise] = useState<{ text: string; sourceStep?: string } | null>(null);
@@ -41,6 +41,9 @@ function WriteTabsInner() {
     } else if (action === "go-premise" && data !== undefined) {
       setPendingPremise({ text: data, sourceStep });
       setActiveTab("premise");
+    } else if (action === "go-joke_to_premise" && data !== undefined) {
+      // joke_to_premise tab
+      setActiveTab("joke_to_premise");
     }
   };
 

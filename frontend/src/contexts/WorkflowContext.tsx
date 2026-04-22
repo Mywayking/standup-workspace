@@ -68,6 +68,10 @@ interface WorkflowContextValue {
   // pending 填充
   setPending: (data: { type: CardType; content: string; rawData: unknown; sourceStep?: string } | null) => void;
 
+  // Tab 导航回调（由 WriteTabs 注入）
+  navigateToTab: (type: CardType) => void;
+  setNavigateCallback: (fn: (type: CardType) => void) => void;
+
   // 历史 session（已结束）
   sessions: WorkflowSession[];
   restoreSession: (id: string) => void;
@@ -93,6 +97,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     type: CardType; content: string; rawData: unknown; sourceStep?: string;
   } | null>(null);
   const [sessions, setSessions] = useState<WorkflowSession[]>([]);
+  const [navigateCallback, setNavigateCallbackState] = useState<((type: CardType) => void) | null>(null);
 
   // 初始化时加载历史
   useEffect(() => {
@@ -184,6 +189,14 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     setPending(data);
   }, []);
 
+  const navigateToTab = useCallback((type: CardType) => {
+    navigateCallback?.(type);
+  }, [navigateCallback]);
+
+  const setNavigateCallbackFn = useCallback((fn: (type: CardType) => void) => {
+    setNavigateCallbackState(() => fn);
+  }, []);
+
   const restoreSession = useCallback((id: string) => {
     const found = sessions.find((s) => s.id === id);
     if (found) {
@@ -208,6 +221,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
         addCard, deleteCard,
         appendRewriteVersion,
         setPending: setPendingFn,
+        navigateToTab, setNavigateCallback: setNavigateCallbackFn,
         sessions, restoreSession, deleteSession,
       }}
     >

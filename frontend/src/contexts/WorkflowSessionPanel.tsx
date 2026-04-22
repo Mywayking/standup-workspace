@@ -36,7 +36,7 @@ function SourceBadge({ step, version }: { step?: string; version?: number }) {
 }
 
 function CardItem({ card }: { card: WorkflowCard }) {
-  const { deleteCard, addCard } = useWorkflow();
+  const { deleteCard, addCard, navigateToTab } = useWorkflow();
 
   const handleSendTo = (targetType: CardType) => {
     addCard({
@@ -47,9 +47,10 @@ function CardItem({ card }: { card: WorkflowCard }) {
       status: "success",
       sourceStep: CARD_TYPE_LABELS[card.type],
     });
+    navigateToTab(targetType);
   };
 
-  const sendTargets = SEND_TARGETS.filter(t => t.type !== card.type);
+  const sendTargets = SEND_TARGETS.filter((t) => t.type !== card.type);
 
   return (
     <div className="p-3 bg-white rounded-xl border border-gray-100 hover:border-blue-200 transition-all">
@@ -74,7 +75,8 @@ function CardItem({ card }: { card: WorkflowCard }) {
       </div>
 
       <p className="text-sm text-gray-800 line-clamp-3 leading-relaxed">
-        {card.content.slice(0, 120)}{card.content.length > 120 ? "…" : ""}
+        {card.content.slice(0, 120)}
+        {card.content.length > 120 ? "…" : ""}
       </p>
 
       {/* 发送按钮组 */}
@@ -93,77 +95,129 @@ function CardItem({ card }: { card: WorkflowCard }) {
   );
 }
 
-function HistorySessionItem({ s, onRestore, onDelete }: {
+function HistorySessionItem({
+  s,
+  onRestore,
+  onDelete,
+}: {
   s: { id: string; sourceInput: string; cards: WorkflowCard[]; createdAt: string; updatedAt: string };
   onRestore: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
-  const date = new Date(s.updatedAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+  const date = new Date(s.updatedAt).toLocaleDateString("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  // 统计各类型卡片数
+  const typeCount: Record<string, number> = {};
+  s.cards.forEach((c) => {
+    typeCount[c.type] = (typeCount[c.type] ?? 0) + 1;
+  });
+  const typeSummary = Object.entries(typeCount)
+    .map(([t, n]) => `${CARD_TYPE_ICONS[t as CardType]}${n}`)
+    .join(" ");
+
   return (
     <div className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-xl border border-gray-100">
       <div className="flex-1 min-w-0">
         <p className="text-xs text-gray-700 line-clamp-1 truncate">{s.sourceInput}</p>
-        <p className="text-xs text-gray-400 mt-0.5">{date} · {s.cards.length} 个结果</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {date} · {s.cards.length} 个结果{typeSummary ? ` · ${typeSummary}` : ""}
+        </p>
       </div>
-      <button onClick={() => onRestore(s.id)} className="text-xs text-blue-600 hover:text-blue-700 shrink-0">恢复</button>
-      <button onClick={() => onDelete(s.id)} className="text-xs text-gray-400 hover:text-red-400 shrink-0">删除</button>
+      <button
+        onClick={() => onRestore(s.id)}
+        className="text-xs text-blue-600 hover:text-blue-700 shrink-0 font-medium"
+      >
+        继续
+      </button>
+      <button
+        onClick={() => onDelete(s.id)}
+        className="text-xs text-gray-400 hover:text-red-400 shrink-0"
+      >
+        删除
+      </button>
     </div>
   );
 }
+
+// ─── Empty State ──────────────────────────────────────────────────────────────
+
+function EmptyState() {
+  const { sessions, restoreSession } = useWorkflow();
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
+      <p className="text-sm font-bold text-gray-800 mb-1">创作历史</p>
+      <p className="text-xs text-gray-400 mb-4">还没有创作记录，开始一段新创作吧</p>
+
+      {sessions.length > 0 && (
+        <>
+          <p className="text-xs font-semibold text-gray-400 mb-2">最近创作</p>
+          <div className="space-y-2">
+            {sessions.slice(0, 3).map((s) => (
+              <HistorySessionItem
+                key={s.id}
+                s={s}
+                onRestore={restoreSession}
+                onDelete={() => {}}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Active Session Panel ────────────────────────────────────────────────────
 
 export default function WorkflowSessionPanel() {
   const { session, resetSession, sessions, restoreSession, deleteSession } = useWorkflow();
   const [showHistory, setShowHistory] = useState(false);
 
   if (!session) {
-    // 无活跃 session 时显示历史
-    return (
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-bold text-gray-800">创作历史</p>
-          <button onClick={() => setShowHistory(!showHistory)} className="text-xs text-gray-400 hover:text-gray-600">
-            {showHistory ? "收起" : `查看(${sessions.length})`}
-          </button>
-        </div>
-        {showHistory && (
-          <div className="space-y-2 max-h-[70vh] overflow-y-auto">
-            {sessions.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-4">暂无历史</p>
-            ) : (
-              sessions.map((s) => (
-                <HistorySessionItem key={s.id} s={s} onRestore={restoreSession} onDelete={deleteSession} />
-              ))
-            )}
-          </div>
-        )}
-      </div>
-    );
+    return <EmptyState />;
   }
 
-  // 有活跃 session
   const rewriteCards = session.cards.filter((c) => c.type === "rewrite");
   const nonRewriteCards = session.cards.filter((c) => c.type !== "rewrite");
+
+  // 卡片类型分布
+  const typeCount: Record<string, number> = {};
+  session.cards.forEach((c) => {
+    typeCount[c.type] = (typeCount[c.type] ?? 0) + 1;
+  });
+  const typeSummary = Object.entries(typeCount)
+    .map(([t, n]) => `${CARD_TYPE_ICONS[t as CardType]}${n}`)
+    .join(" ");
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-1">
         <div>
           <p className="text-sm font-bold text-gray-800">当前创作会话</p>
-          <p className="text-xs text-gray-400">{session.cards.length} 个结果</p>
+          <p className="text-xs text-gray-400">
+            {session.cards.length} 个结果
+            {typeSummary ? ` · ${typeSummary}` : ""}
+          </p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowHistory(!showHistory)}
             className="text-xs text-gray-400 hover:text-gray-600"
           >
-            历史
+            {showHistory ? "收起历史" : `历史(${sessions.length})`}
           </button>
           <button
             onClick={resetSession}
             className="text-xs text-gray-400 hover:text-red-500 transition-colors"
           >
-            结束会话
+            结束
           </button>
         </div>
       </div>
@@ -175,7 +229,12 @@ export default function WorkflowSessionPanel() {
             <p className="text-xs text-gray-400 text-center">暂无其他历史</p>
           ) : (
             sessions.map((s) => (
-              <HistorySessionItem key={s.id} s={s} onRestore={restoreSession} onDelete={deleteSession} />
+              <HistorySessionItem
+                key={s.id}
+                s={s}
+                onRestore={restoreSession}
+                onDelete={deleteSession}
+              />
             ))
           )}
         </div>
@@ -189,11 +248,14 @@ export default function WorkflowSessionPanel() {
 
       {/* Cards */}
       {session.cards.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-4">
-          开始创作后结果会显示在这里
-        </p>
+        <div className="py-6 text-center">
+          <p className="text-sm text-gray-400">开始创作后结果会显示在这里</p>
+          <p className="text-xs text-gray-300 mt-1">
+            在左侧任一工具输入内容，完成后保存到会话
+          </p>
+        </div>
       ) : (
-        <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+        <div className="space-y-2 max-h-[55vh] overflow-y-auto">
           {/* 非改稿卡片 */}
           {nonRewriteCards.map((card) => (
             <CardItem key={card.id} card={card} />
