@@ -35,27 +35,46 @@ function SourceBadge({ step, version }: { step?: string; version?: number }) {
   );
 }
 
-function CardItem({ card }: { card: WorkflowCard }) {
+function CardItem({ card, isLatest }: { card: WorkflowCard; isLatest?: boolean }) {
   const { deleteCard, addCard, handoff } = useWorkflow();
+  const [showMore, setShowMore] = useState(false);
 
+  // 发送内容到目标步骤（带完整来源链）
   const handleSendTo = (targetType: CardType) => {
-    // Add card to session panel
+    const sourceChain = card.sourceStep
+      ? `${card.sourceStep} → ${CARD_TYPE_LABELS[card.type]}`
+      : CARD_TYPE_LABELS[card.type];
+
     addCard({
       type: targetType,
-      title: card.type === targetType ? card.title : CARD_TYPE_LABELS[targetType],
+      title: CARD_TYPE_LABELS[targetType],
       content: card.content,
       rawData: card.rawData,
       status: "success",
-      sourceStep: CARD_TYPE_LABELS[card.type],
+      sourceStep: sourceChain,
     });
-    // Use the handoff callback (registered by WriteTabs) to set pending + navigate
-    handoff(targetType, card.content, CARD_TYPE_LABELS[card.type]);
+    handoff(targetType, card.content, sourceChain);
+    setShowMore(false);
   };
 
-  const sendTargets = SEND_TARGETS.filter((t) => t.type !== card.type);
+  // 主路径按钮（根据当前卡片类型决定最自然的下一步）
+  const getPrimaryTarget = (): CardType | null => {
+    if (card.type === "premise" || card.type === "joke_to_premise") return "angles";
+    if (card.type === "angles") return "rewrite";
+    return null;
+  };
+
+  const primaryTarget = getPrimaryTarget();
+  const primaryLabel = primaryTarget ? SEND_TARGETS.find(t => t.type === primaryTarget)?.label : null;
+  const otherTargets = SEND_TARGETS.filter(t => t.type !== card.type && t.type !== primaryTarget);
 
   return (
-    <div className="p-3 bg-white rounded-xl border border-gray-100 hover:border-blue-200 transition-all">
+    <div className={`p-3 rounded-xl border transition-all ${
+      isLatest
+        ? "bg-blue-50/30 border-blue-200 shadow-sm"
+        : "bg-white border-gray-100 hover:border-blue-200"
+    }`}>
+      {/* Header */}
       <div className="flex items-start gap-1.5 mb-1.5">
         <span className="text-sm shrink-0">{CARD_TYPE_ICONS[card.type]}</span>
         <div className="flex items-center flex-wrap gap-1 min-w-0 flex-1">
@@ -65,7 +84,11 @@ function CardItem({ card }: { card: WorkflowCard }) {
               v{card.version}
             </span>
           )}
-          <SourceBadge step={card.sourceStep} version={card.version} />
+          {isLatest && (
+            <span className="text-xs px-1.5 py-0.5 bg-green-50 text-green-600 rounded font-medium">
+              最新
+            </span>
+          )}
         </div>
         <button
           onClick={() => deleteCard(card.id)}
@@ -76,23 +99,56 @@ function CardItem({ card }: { card: WorkflowCard }) {
         </button>
       </div>
 
+      {/* 来源链 */}
+      {card.sourceStep && (
+        <div className="mb-1.5">
+          <span className="text-xs text-gray-400">
+            {card.sourceStep}
+          </span>
+        </div>
+      )}
+
+      {/* 内容预览 */}
       <p className="text-sm text-gray-800 line-clamp-3 leading-relaxed">
-        {card.content.slice(0, 120)}
-        {card.content.length > 120 ? "…" : ""}
+        {card.content.slice(0, 100)}
+        {card.content.length > 100 ? "…" : ""}
       </p>
 
-      {/* 发送按钮组 */}
-      <div className="flex flex-wrap gap-1 mt-2">
-        {sendTargets.map((target) => (
+      {/* 按钮组 */}
+      {primaryTarget && (
+        <div className="flex items-center gap-1.5 mt-2">
           <button
-            key={target.type}
-            onClick={() => handleSendTo(target.type)}
-            className="text-xs px-2 py-1 bg-gray-50 text-gray-600 rounded-lg hover:bg-blue-50 hover:text-blue-700 transition-colors border border-gray-100"
+            onClick={() => handleSendTo(primaryTarget)}
+            className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
           >
-            {target.label}
+            {primaryLabel}
           </button>
-        ))}
-      </div>
+
+          {otherTargets.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setShowMore(!showMore)}
+                className="text-xs px-2 py-1.5 bg-gray-100 text-gray-500 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                更多 ▾
+              </button>
+              {showMore && (
+                <div className="absolute bottom-full mb-1 right-0 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-10 min-w-[120px]">
+                  {otherTargets.map((target) => (
+                    <button
+                      key={target.type}
+                      onClick={() => handleSendTo(target.type)}
+                      className="w-full text-left text-xs px-3 py-1.5 text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                    >
+                      {target.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -187,6 +243,9 @@ export default function WorkflowSessionPanel() {
 
   const rewriteCards = session.cards.filter((c) => c.type === "rewrite");
   const nonRewriteCards = session.cards.filter((c) => c.type !== "rewrite");
+  const latestCardId = session.cards.length > 0
+    ? session.cards.reduce((latest, c) => c.createdAt > latest.createdAt ? c : latest, session.cards[0]).id
+    : null;
 
   // 卡片类型分布
   const typeCount: Record<string, number> = {};
@@ -269,7 +328,7 @@ export default function WorkflowSessionPanel() {
               <p className="text-xs font-semibold text-gray-400 mb-1.5 mt-2">✏️ 改稿版本</p>
               <div className="space-y-1.5">
                 {rewriteCards.map((card) => (
-                  <CardItem key={card.id} card={card} />
+                  <CardItem key={card.id} card={card} isLatest={card.id === latestCardId} />
                 ))}
               </div>
             </div>
