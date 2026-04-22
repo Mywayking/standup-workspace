@@ -326,146 +326,6 @@ function CmdKModal({
 
 // ─── History Panel ────────────────────────────────────────────────────────────
 
-function HistoryItemCard({
-  item,
-  onRestore,
-  onDelete,
-}: {
-  item: HistoryItem;
-  onRestore: (item: HistoryItem) => void;
-  onDelete: (id: string) => void;
-}) {
-  const [hover, setHover] = useState(false);
-  let label = '—';
-  try {
-    label = item.result?.comedy_type || (typeof item.result?.theme_refined === 'string' ? item.result.theme_refined.slice(0, 20) : '') || (item.result ? '已分析' : '—');
-  } catch {}
-  const date = new Date(item.timestamp).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
-
-  return (
-    <div
-      className="relative shrink-0 w-48 group"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      <button
-        onClick={() => onRestore(item)}
-        className="w-full p-3 bg-white rounded-xl border border-gray-100 hover:border-blue-300 hover:shadow-md transition-all text-left"
-      >
-        <p className="text-xs text-gray-500 line-clamp-2 mb-1.5 pr-4">{item.text}</p>
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-blue-600 truncate max-w-[100px]">{label}...</span>
-          <span className="text-xs text-gray-300">{date}</span>
-        </div>
-      </button>
-
-      {/* Hover overlay with preview */}
-      {hover && (
-        <div className="absolute top-0 left-0 right-0 z-10 bg-white rounded-xl border border-blue-300 shadow-lg p-3 text-left pointer-events-none">
-          <p className="text-xs text-gray-500 line-clamp-3 mb-2">{item.text}</p>
-          <p className="text-xs font-medium text-blue-600">{label}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{date}</p>
-        </div>
-      )}
-
-      {/* Delete button */}
-      <button
-        onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
-        className="absolute top-2 right-2 w-5 h-5 rounded-full bg-gray-200 hover:bg-red-100 text-gray-400 hover:text-red-500 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-        title="删除"
-      >
-        ✕
-      </button>
-    </div>
-  );
-}
-
-function HistoryPanel({
-  open,
-  onToggle,
-  items,
-  onRestore,
-  onDelete,
-  onClearAll,
-  searchQuery,
-  onSearch,
-  loading,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  items: HistoryItem[];
-  onRestore: (item: HistoryItem) => void;
-  onDelete: (id: string) => void;
-  onClearAll: () => void;
-  searchQuery: string;
-  onSearch: (q: string) => void;
-  loading: boolean;
-}) {
-  if (!open) return null;
-
-  const filtered = searchQuery.trim()
-    ? items.filter(
-        (item) =>
-          item.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.result?.comedy_type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.result?.theme_refined?.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : items;
-
-  return (
-    <div className="border-t border-gray-100 bg-gray-50/50 p-4">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-semibold text-gray-400 uppercase">
-          历史记录 <span className="text-gray-300 font-normal">({loading ? '-' : filtered.length}{searchQuery.trim() && filtered.length !== items.length ? `/${items.length}` : ''})</span>
-        </p>
-        <div className="flex items-center gap-2">
-          {items.length > 0 && (
-            <button
-              onClick={onClearAll}
-              className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-              title="清空全部"
-            >
-              清空
-            </button>
-          )}
-          <button onClick={onToggle} className="text-xs text-gray-400 hover:text-gray-600">收起 ▲</button>
-        </div>
-      </div>
-
-      {/* Search input */}
-      {items.length > 0 && (
-        <div className="mb-3">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => onSearch(e.target.value)}
-            placeholder="搜索历史记录..."
-            className="w-full px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-400 transition-colors placeholder-gray-300"
-          />
-        </div>
-      )}
-
-      {loading ? (
-        <p className="text-xs text-gray-400 text-center py-4">加载中...</p>
-      ) : filtered.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-4">
-          {searchQuery.trim() ? '没有找到匹配的历史记录' : '暂无历史记录'}
-        </p>
-      ) : (
-        <div className="flex gap-3 overflow-x-auto pb-1">
-          {filtered.map((item) => (
-            <HistoryItemCard
-              key={item.id}
-              item={item}
-              onRestore={onRestore}
-              onDelete={onDelete}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Similar Materials ───────────────────────────────────────────────────────
 
@@ -941,10 +801,7 @@ export default function WritePage({ initialText, sourceStep, onClearPending, onR
     feedbackSent: null,
   });
   const [copied, setCopied] = useState(false);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(true);
-  const [historySearch, setHistorySearch] = useState('');
+
   const [cmdKOpen, setCmdKOpen] = useState(false);
   const [cmdKQuery, setCmdKQuery] = useState("");
   const charCount = inputText.length;
@@ -952,40 +809,7 @@ export default function WritePage({ initialText, sourceStep, onClearPending, onR
   streamRef.current = stream;
   const abortRef = useRef<AbortController | null>(null);
 
-  // Load history from localStorage
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("comedy_history");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          // Filter out any items with invalid result structure
-          const valid = parsed.filter((item: any) => {
-            if (!item || typeof item !== 'object') return false;
-            if (!item.result || typeof item.result !== 'object') return false;
-            // Basic sanity check - must have at least one string field
-            const r = item.result;
-            return (
-              typeof r.comedy_type === 'string' ||
-              typeof r.premise === 'string' ||
-              typeof r.theme_refined === 'string' ||
-              Array.isArray(r.techniques) ||
-              Array.isArray(r.segments)
-            );
-          });
-          setHistory(valid);
-          // Rewrite localStorage if we filtered anything out
-          if (valid.length !== parsed.length) {
-            localStorage.setItem("comedy_history", JSON.stringify(valid));
-          }
-        }
-      }
-    } catch (e) {
-      // If localStorage is corrupted, clear it
-      localStorage.removeItem("comedy_history");
-    }
 
-  }, []);
 
   const autoTriggered = useRef(false);
 
@@ -1015,15 +839,7 @@ export default function WritePage({ initialText, sourceStep, onClearPending, onR
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const saveHistory = (item: HistoryItem) => {
-    if (!item.result) return; // Don't save failed/incomplete results
-    setHistory((prev) => {
-      const filtered = prev.filter((h) => h.id !== item.id);
-      const next = [item, ...filtered].slice(0, 20);
-      try { localStorage.setItem("comedy_history", JSON.stringify(next)); } catch {}
-      return next;
-    });
-  };
+
 
   const handleAnalyze = async () => {
     if (inputText.trim().length < 20) return;
@@ -1154,7 +970,6 @@ export default function WritePage({ initialText, sourceStep, onClearPending, onR
               result,
               timestamp: Date.now(),
             };
-            saveHistory(histItem);
             abortRef.current = null;
 
             setStream((current): StreamingState => ({
@@ -1197,61 +1012,9 @@ export default function WritePage({ initialText, sourceStep, onClearPending, onR
     }
   };
 
-  const handleRestore = (item: HistoryItem) => {
-    if (!item || !item.result) return;
-    try {
-      const raw = item.result;
-      // Normalize old history data that may have arrays instead of strings
-      const result = {
-        ...raw,
-        comedy_type: typeof raw.comedy_type === 'string' ? raw.comedy_type : (raw.comedy_type ?? ''),
-        premise: typeof raw.premise === 'string' ? raw.premise : String(raw.premise ?? ''),
-        theme_refined: typeof raw.theme_refined === 'string' ? raw.theme_refined : '',
-        structures: (() => {
-          const s = raw.structures as unknown;
-          if (typeof s === 'string') return s;
-          if (Array.isArray(s)) return (s as string[]).join('、');
-          return '';
-        })(),
-        techniques: Array.isArray(raw.techniques) ? raw.techniques : [],
-        segments: Array.isArray(raw.segments) ? raw.segments.map((s: any) => ({
-          text: typeof s.text === 'string' ? s.text : String(s.text ?? ''),
-          structure: typeof s.structure === 'string' ? s.structure : 'unknown',
-          attitude: typeof s.attitude === 'string' ? s.attitude : '',
-          theme: typeof s.theme === 'string' ? s.theme : '',
-          premise: typeof s.premise === 'string' ? s.premise : '',
-          techniques: Array.isArray(s.techniques) ? s.techniques : [],
-          problem: typeof s.problem === 'string' ? s.problem : '',
-        })) : [],
-      };
-      setInputText(item.text ?? '');
-      setStream({
-        phase: "done",
-        rawTokens: "",
-        displayText: "",
-        result,
-        error: null,
-        sessionId: "",
-        feedbackSent: null,
-      });
-    } catch (e) {
-      console.error('Failed to restore history item:', e);
-    }
-  };
 
-  const deleteHistory = (id: string) => {
-    setHistory((prev) => {
-      const next = prev.filter((h) => h.id !== id);
-      try { localStorage.setItem("comedy_history", JSON.stringify(next)); } catch {}
-      return next;
-    });
-  };
 
-  const clearAllHistory = () => {
-    if (!confirm('确定清空全部历史记录？')) return;
-    setHistory([]);
-    try { localStorage.removeItem("comedy_history"); } catch {}
-  };
+
 
   const [contentWarning, setContentWarning] = useState<string | null>(null);
 
@@ -1303,12 +1066,6 @@ export default function WritePage({ initialText, sourceStep, onClearPending, onR
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <button
-              onClick={() => setHistoryOpen((v) => !v)}
-              className="text-xs sm:text-sm text-gray-400 hover:text-gray-700 transition-colors"
-            >
-              {historyOpen ? "收起" : `📋 ${history.length}`}
-            </button>
-            <button
               onClick={() => setCmdKOpen(true)}
               className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs sm:text-sm text-gray-600 transition-colors"
             >
@@ -1318,19 +1075,6 @@ export default function WritePage({ initialText, sourceStep, onClearPending, onR
           </div>
         </div>
       </header>
-
-      {/* History Panel */}
-      <HistoryPanel
-        open={historyOpen}
-        onToggle={() => setHistoryOpen(false)}
-        items={history}
-        onRestore={handleRestore}
-        onDelete={deleteHistory}
-        onClearAll={clearAllHistory}
-        searchQuery={historySearch}
-        onSearch={setHistorySearch}
-        loading={historyLoading}
-      />
 
       {/* Main Content */}
       <main className="flex-1 max-w-6xl mx-auto w-full p-4 sm:p-6">
