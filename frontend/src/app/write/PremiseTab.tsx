@@ -157,27 +157,32 @@ export default function PremiseTab({
           const evt = pendingEvent;
 
           if (evt === "token") {
-            setStream((s) => ({ ...s, displayText: s.displayText + dataStr }));
+            // 不在 UI 展示原始 token，避免协议内容泄露
+            continue;
           } else if (evt === "progress") {
             try {
               const data = JSON.parse(dataStr);
+              // 阶段提示用覆盖而非追加，避免累积混乱
               setStream((s) => ({
                 ...s,
-                displayText: (s.displayText || "") + (data.message || "") + "  ",
+                displayText: data.message || "正在分析素材…",
               }));
-            } catch {}
+            } catch {
+              setStream((s) => ({ ...s, displayText: "正在分析素材…" }));
+            }
           } else if (evt === "analysis") {
             try {
               const data = JSON.parse(dataStr);
               setStream((s) => ({
                 ...s,
                 displayText:
-                  "✅ 主题：" +
-                  (data.theme || "") +
-                  "  | 态度：" +
-                  (data.attitude || "") +
-                  "  | 核心矛盾：" +
-                  (data.conflict || data.core_conflict || ""),
+                  "已识别：「" +
+                  (data.theme || "—") +
+                  "」｜态度：「" +
+                  (data.attitude || "—") +
+                  "」｜核心矛盾：「" +
+                  (data.conflict || data.core_conflict || "提炼中") +
+                  "」",
               }));
             } catch {}
           } else if (evt === "done") {
@@ -215,6 +220,10 @@ export default function PremiseTab({
   const hasResult = stream.phase === "done" && stream.result;
   const raw = stream.displayText ?? "";
   const cleaned = raw.replace(/[{}\[\]"":\\]/g, "").replace(/\n/g, " ").replace(/,{2,}/g, " ").replace(/\s{2,}/g, " ").trim();
+
+  // 安全兜底：检测协议垃圾数据，只在确认安全时展示
+  const looksLikeProtocol = /premise_candidates|theme|attitude|conflict|description|\\u[0-9a-fA-F]{4}|\\["\w]+\s*:/.test(raw);
+  const previewText = !cleaned ? "正在分析素材，马上给你前提候选…" : looksLikeProtocol ? "正在分析素材，马上给你前提候选…" : cleaned;
 
   // Derive simple parts for display
   const introItems = [
@@ -300,8 +309,8 @@ export default function PremiseTab({
               <span className="text-sm font-semibold text-gray-700">AI 分析中</span>
             </div>
             <div className="bg-gray-50 rounded-xl p-4 min-h-[80px]">
-              {cleaned ? (
-                <div className="text-sm text-gray-500 leading-relaxed animate-pulse">{cleaned}</div>
+              {previewText ? (
+                <div className="text-sm text-gray-500 leading-relaxed">{previewText}</div>
               ) : (
                 <div className="space-y-2">
                   <div className="h-3 bg-gray-200 rounded animate-pulse w-full" />

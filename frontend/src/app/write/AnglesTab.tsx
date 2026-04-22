@@ -160,7 +160,8 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
           const evt = pendingEvent;
 
           if (evt === "token") {
-            setStream((s) => ({ ...s, displayText: s.displayText + dataStr }));
+            // 不在 UI 展示原始 token
+            continue;
           } else if (evt === "done") {
             try {
               const data = JSON.parse(dataStr);
@@ -195,6 +196,8 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
 
   const raw = stream.displayText ?? "";
   const cleaned = raw.replace(/[{}\[\]"":\\]/g, "").replace(/\n/g, " ").replace(/,{2,}/g, " ").replace(/\s{2,}/g, " ").trim();
+  const looksLikeProtocol = /angles|premise|conflict|techniques|description|\\u[0-9a-fA-F]{4}|\\["\w]+\s*:/.test(raw);
+  const previewText = !cleaned ? "正在为你找角度…" : looksLikeProtocol ? "正在为你找角度…" : cleaned;
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -271,8 +274,8 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
               <span className="text-sm font-semibold text-gray-700">AI 分析中</span>
             </div>
             <div className="bg-gray-50 rounded-xl p-4 min-h-[80px]">
-              {cleaned ? (
-                <div className="text-sm text-gray-500 leading-relaxed animate-pulse">{cleaned}</div>
+              {previewText ? (
+                <div className="text-sm text-gray-500 leading-relaxed">{previewText}</div>
               ) : (
                 <div className="space-y-2">
                   <div className="h-3 bg-gray-200 rounded animate-pulse w-full" />
