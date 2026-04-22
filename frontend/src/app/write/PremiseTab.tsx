@@ -80,28 +80,12 @@ export default function PremiseTab({
   const streamRef = useRef(stream);
   streamRef.current = stream;
 
-  const [history, setHistory] = useState<{ id: string; text: string; result: PremiseResult }[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
   const [copiedRec, setCopiedRec] = useState(false);
   const regenerateRef = useRef<() => void>(null);
 
   const [introDismissed, setIntroDismissed] = useState(() => {
     try { return localStorage.getItem("premise_intro_dismissed") === "1"; } catch { return false; }
   });
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("premise_history");
-      if (raw) setHistory(JSON.parse(raw));
-    } catch {}
-  }, []);
-
-  const handleRestore = useCallback((item: { id: string; text: string; result: PremiseResult }) => {
-    setInputText(item.text);
-    setStream({ phase: "done", displayText: "", result: item.result, error: null });
-    setShowHistory(false);
-    onClearPending?.();
-  }, []);
 
   const canAnalyze = inputText.trim().length >= 5;
 
@@ -199,13 +183,7 @@ export default function PremiseTab({
               const data = JSON.parse(dataStr);
               setStream({ phase: "done", displayText: "", result: data, error: null });
 
-              const newItem = { id: sid, text: inputText.trim(), result: data };
-              setHistory((prev) => {
-                const filtered = prev.filter((h) => h.id !== sid);
-                const next = [newItem, ...filtered].slice(0, 20);
-                try { localStorage.setItem("premise_history", JSON.stringify(next)); } catch {}
-                return next;
-              });
+
             } catch {
               setStream((s) => ({ ...s, phase: "error", error: "解析返回数据失败" }));
             }
@@ -263,12 +241,6 @@ export default function PremiseTab({
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => setShowHistory(!showHistory)}
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-              >
-                {showHistory ? "收起历史" : "📋 查看历史"}
-              </button>
-              <button
                 onClick={() => {
                   const kw = prompt('输入素材库搜索关键词（可留空查看全部素材）：');
                   if (kw !== null) {
@@ -283,22 +255,6 @@ export default function PremiseTab({
             </div>
           </div>
 
-          {showHistory && (
-            <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-100 max-h-60 overflow-y-auto">
-              <p className="text-xs text-gray-400 mb-2 font-medium">📋 你之前提炼过的素材</p>
-              <div className="space-y-1">
-                {history.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => handleRestore(item)}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded transition-colors truncate"
-                  >
-                    {item.text}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           <textarea
             value={inputText}

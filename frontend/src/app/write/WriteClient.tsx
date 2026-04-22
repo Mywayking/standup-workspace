@@ -984,7 +984,7 @@ export default function WritePage({ initialText, sourceStep, onClearPending, onR
       // If localStorage is corrupted, clear it
       localStorage.removeItem("comedy_history");
     }
-    setHistoryLoading(false);
+
   }, []);
 
   const autoTriggered = useRef(false);

@@ -62,10 +62,6 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
   const streamRef = useRef(stream);
   streamRef.current = stream;
 
-  // Load history
-  const [history, setHistory] = useState<{ id: string; premise: string; result: AnglesResult }[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-
   // Copy feedback state
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [introDismissed, setIntroDismissed] = useState(() => {
@@ -75,13 +71,6 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
   const autoTriggered = useRef(false);
   const regenerateRef = useRef<() => void>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("angles_history");
-      if (raw) setHistory(JSON.parse(raw));
-    } catch {}
-  }, []);
 
   // Auto-trigger analysis when initialData comes from cross-tab navigation
   useEffect(() => {
@@ -100,12 +89,7 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
     }
   }, [initialData]);
 
-  const handleRestore = useCallback((item: { id: string; premise: string; result: AnglesResult }) => {
-    setInputText(item.premise);
-    setStream({ phase: "done", displayText: "", result: item.result, error: null });
-    setShowHistory(false);
-    onClearPending?.();
-  }, []);
+
 
   const canAnalyze = inputText.trim().length >= 5;
 
@@ -179,14 +163,6 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
             try {
               const data = JSON.parse(dataStr);
               setStream({ phase: "done", displayText: "", result: data, error: null });
-
-              const newItem = { id: sid, premise: inputText.trim(), result: data };
-              setHistory((prev) => {
-                const filtered = prev.filter((h) => h.id !== sid);
-                const next = [newItem, ...filtered].slice(0, 20);
-                try { localStorage.setItem("angles_history", JSON.stringify(next)); } catch {}
-                return next;
-              });
             } catch {
               setStream((s) => ({ ...s, phase: "error", error: "解析返回数据失败" }));
             }
@@ -243,30 +219,10 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
 
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-800">找角度</h2>
-            <button
-              onClick={() => setShowHistory(!showHistory)}
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
-              {showHistory ? "收起历史" : "📋 查看历史"}
-            </button>
+
           </div>
 
-          {showHistory && history.length > 0 && (
-            <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-100 max-h-60 overflow-y-auto">
-              <p className="text-xs text-gray-400 mb-2 font-medium">📋 你之前找过的角度</p>
-              <div className="space-y-1">
-                {history.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => handleRestore(item)}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded transition-colors truncate"
-                  >
-                    {item.premise}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+
 
           <form
             onSubmit={(e) => { e.preventDefault(); handleAnalyze(); }}
