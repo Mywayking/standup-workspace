@@ -16,7 +16,7 @@ from typing import Optional
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 
-BASE_DIR = Path("/root/standup-workspace")
+BASE_DIR = Path(__file__).resolve().parents[1]  # agents/monitor.py → standup-workspace/
 AGENT_DIR = BASE_DIR / "agents" / "prompt-optimizer"
 MEMORY_DIR = AGENT_DIR / "memory"
 MEMORY_DIR.mkdir(parents=True, exist_ok=True)

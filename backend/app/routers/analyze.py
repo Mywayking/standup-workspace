@@ -424,7 +424,7 @@ async def analyze_stream(req: AnalyzeRequest):
                     yield "event: done\ndata: " + _json.dumps(final) + "\n\n"
                 else:
                     async for err in send_error("解析失败，请稍后重试"): yield err
-        except httpx.HTTPStatusError:
+        except httpx.HTTPStatusError as exc:
             async for err in send_error(_classify_error(exc)): yield err
         except Exception as exc:
             logger.warning(f"[DeepSeek streaming failed: {exc}]")

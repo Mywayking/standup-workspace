@@ -189,8 +189,8 @@ async def _call_llm(client: httpx.AsyncClient, user_prompt: str, deepseek_key: s
             import json as _j
             return _j.loads(resp[first:last+1])
         return {"error": "返回格式解析失败，请稍后重试"}
-    except httpx.HTTPStatusError:
-        logger.warning(f"[DeepSeek HTTP error in extract-premise]")
+    except httpx.HTTPStatusError as exc:
+        logger.warning(f"[DeepSeek HTTP error in extract-premise] status={exc.response.status_code}")
         return {"error": _classify_error(exc)}
     except Exception as exc:
         logger.warning(f"[DeepSeek failed in extract-premise: {exc}]")
@@ -307,7 +307,7 @@ async def extract_premise_stream(req: dict):
                     yield f"event: done\ndata: " + _json.dumps(result) + "\n\n"
                 else:
                     async for err in send_error("解析失败，请稍后重试"): yield err
-        except httpx.HTTPStatusError:
+        except httpx.HTTPStatusError as exc:
             async for err in send_error(_classify_error(exc)): yield err
         except Exception as exc:
             logger.warning(f"[DeepSeek streaming failed: {exc}]")

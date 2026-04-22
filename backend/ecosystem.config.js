@@ -6,7 +6,7 @@ module.exports = {
     args: "-c 'cd /root/standup-workspace/backend && uvicorn app.main:app --host 0.0.0.0 --port 8000'",
     cwd: "/root/standup-workspace/backend",
     env: {
-      DEEPSEEK_API_KEY: "sk-cc4edf6aa8ad4f3fae8c8a95189e53b9",
+      DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
     },
   }]
 };

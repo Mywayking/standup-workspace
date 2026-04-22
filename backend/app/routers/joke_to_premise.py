@@ -219,11 +219,9 @@ def _call_llm_sync(system_prompt: str, user_prompt: str) -> dict:
             if first >= 0 and last > first:
                 return json.loads(resp[first : last + 1])
             return {"error": "返回格式解析失败，请稍后重试"}
-    except httpx.HTTPStatusError:
-        logger.warning("[JokeToPremise] DeepSeek HTTP error")
+    except httpx.HTTPStatusError as exc:
+        logger.warning(f"[JokeToPremise] DeepSeek HTTP error status={exc.response.status_code}")
         return {"error": _classify_error(exc)}
-    except Exception as exc:
-        logger.warning(f"[JokeToPremise] DeepSeek failed: {exc}")
         return {"error": _classify_error(exc)}
 
 

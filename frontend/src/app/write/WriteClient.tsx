@@ -6,15 +6,6 @@ const BASE = "";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface SegmentResult {
-  text: string;
-  structure: string;
-  attitude: string;
-  theme: string;
-  premise: string;
-  problem: string;
-}
-
 interface EvaluationResult {
   "观点和立场": string;
   "紧扣主题": string;
@@ -89,7 +80,6 @@ interface HistoryItem {
 
 function esc(s: unknown): string {
   if (s == null) return '';
-  return String(s)
   return String(s)
     // Decode existing HTML entities first to avoid double-escaping
     .replace(/&amp;/g, '&')
