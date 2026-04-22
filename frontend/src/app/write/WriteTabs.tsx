@@ -82,8 +82,58 @@ function WriteTabsInner() {
     }
   };
 
+  const STEPS = ["素材", "前提", "角度", "改稿"] as const;
+  const TAB_TO_STEP: Record<string, number> = {
+    premise: 1,
+    angles: 2,
+    rewrite: 3,
+    joke_to_premise: -1, // side entry
+  };
+  const activeStep = TAB_TO_STEP[activeTab] ?? -1;
+
+  const handleStepClick = (stepIdx: number) => {
+    const tabMap: (string | null)[] = [null, "premise", "angles", "rewrite"];
+    const target = tabMap[stepIdx];
+    if (target) {
+      setActiveTab(target as typeof activeTab);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Main Flow Guidance */}
+      <div className="bg-white border-b border-gray-100">
+        <div className="max-w-7xl mx-auto px-4 py-2.5">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-400 shrink-0">推荐流程：</span>
+            <div className="flex items-center gap-1">
+              {STEPS.map((step, idx) => {
+                const isActive = idx === activeStep;
+                const isPast = idx < activeStep;
+                return (
+                  <button
+                    key={step}
+                    onClick={() => handleStepClick(idx)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                      isActive
+                        ? "bg-blue-600 text-white"
+                        : isPast
+                        ? "bg-blue-50 text-blue-600"
+                        : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                    }`}
+                  >
+                    {step}
+                  </button>
+                );
+              })}
+            </div>
+            {activeTab !== "joke_to_premise" && (
+              <span className="text-xs text-gray-400">| 已有一句梗？试试「梗写前提」</span>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Tab Bar */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4">
