@@ -32,3 +32,25 @@ def send_error(msg: str):
     """生成 SSE error 事件字符串（用于 async generator）。"""
     import json as _json
     yield f"event: error\ndata: {_json.dumps({'error': msg})}\n\n"
+
+
+def send_error_with_request_id(msg: str, request_id: str):
+    """带 request_id 的 error 事件。"""
+    import json as _json
+    yield f"event: error\ndata: {_json.dumps({'error': msg, 'request_id': request_id})}\n\n"
+
+
+async def timeout_yield(seconds: float, generator, fallback_msg: str):
+    """
+    为 async generator 包装超时。
+    超时时yield一个error事件，然后抛出 asyncio.TimeoutError。
+    """
+    import asyncio
+    import json as _json
+    try:
+        async with asyncio.timeout(seconds):
+            async for item in generator:
+                yield item
+    except asyncio.TimeoutError:
+        yield f"event: error\ndata: {_json.dumps({'error': fallback_msg})}\n\n"
+        raise

@@ -191,3 +191,88 @@ class ExportRequest(BaseModel):
 
 # Update forward refs
 ScriptDetailOut.model_rebuild()
+
+
+# ─── Write / Comedy Tools ─────────────────────────────────────────────────────
+
+class PremiseCandidate(BaseModel):
+    text: str
+    type: str = ""
+    description: str = ""
+
+
+class PremiseRecommendation(BaseModel):
+    text: str
+    reason: str = ""
+    best_type: str = ""
+
+
+class ExtractPremiseResult(BaseModel):
+    theme: str = ""
+    attitude: str = ""
+    conflict: str = ""
+    premise_candidates: list[PremiseCandidate] = []
+    recommendation: PremiseRecommendation | None = None
+    scene_suggestions: list[str] = []
+    expansion_directions: list[str] = []
+    ending_direction: str = ""
+
+
+class JTPAnalysis(BaseModel):
+    input_type: str = ""
+    joke_type: str = ""
+    core_topic: str = ""
+    core_conflict: str = ""
+    emotion: list[str] = []
+    humor_mechanism: str = ""
+
+
+class JTPPremise(BaseModel):
+    id: str = "p1"
+    title: str = ""
+    why_it_works: str = ""
+    setup_direction: str = ""
+    persona: str = ""
+    emotion: str = ""
+    opening_line: str = ""
+
+
+class JokeToPremiseResult(BaseModel):
+    premises: list[JTPPremise] = []
+
+
+class AngleItem(BaseModel):
+    name: str = ""
+    premise: str = ""
+    expansion_idea: str = ""
+    scene_direction: str = ""
+    ending_direction: str = ""
+
+
+class FindAnglesResult(BaseModel):
+    current_problem: dict = Field(default_factory=dict)
+    angles: list[AngleItem] = []
+    recommendation: dict = Field(default_factory=dict)
+
+
+class ScriptChange(BaseModel):
+    location: str = ""
+    original: str = ""
+    improved: str = ""
+    reason: str = ""
+    technique_added: str = ""
+
+
+class AnalyzeResult(BaseModel):
+    evaluation: dict = Field(default_factory=dict)
+    performer_tags: list[str] = []
+    premise: str = ""
+    theme_refined: str = ""
+    comedy_type: str = ""
+    structures: str = ""
+    techniques: list[str] = []
+    segments: list[dict] = []
+    improved_script: str = ""
+    script_changes: list[ScriptChange] = []
+    style_hints: list[str] = []
+    next_suggestion: str = ""
