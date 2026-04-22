@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: 'frontend-e2e.spec.ts',
+  testMatch: ['frontend-e2e.spec.ts', 'write-page.spec.ts'],
   timeout: 60000,
   use: {
     headless: true,

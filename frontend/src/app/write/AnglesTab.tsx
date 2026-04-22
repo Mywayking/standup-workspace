@@ -196,7 +196,7 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
 
   const raw = stream.displayText ?? "";
   const cleaned = raw.replace(/[{}\[\]"":\\]/g, "").replace(/\n/g, " ").replace(/,{2,}/g, " ").replace(/\s{2,}/g, " ").trim();
-  const looksLikeProtocol = /angles|premise|conflict|techniques|description|\\u[0-9a-fA-F]{4}|\\["\w]+\s*:/.test(raw);
+  const looksLikeProtocol = /[{}]|\\u[0-9a-fA-F]{4}|"[\w_]+"\s*:/.test(raw);
   const previewText = !cleaned ? "正在为你找角度…" : looksLikeProtocol ? "正在为你找角度…" : cleaned;
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {

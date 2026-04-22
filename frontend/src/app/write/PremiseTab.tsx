@@ -222,7 +222,8 @@ export default function PremiseTab({
   const cleaned = raw.replace(/[{}\[\]"":\\]/g, "").replace(/\n/g, " ").replace(/,{2,}/g, " ").replace(/\s{2,}/g, " ").trim();
 
   // 安全兜底：检测协议垃圾数据，只在确认安全时展示
-  const looksLikeProtocol = /premise_candidates|theme|attitude|conflict|description|\\u[0-9a-fA-F]{4}|\\["\w]+\s*:/.test(raw);
+  // 只拦截真正的协议残留：JSON 对象、Unicode 转义、字段引用语法
+  const looksLikeProtocol = /[{}]|\\u[0-9a-fA-F]{4}|"[\w_]+"\s*:/.test(raw);
   const previewText = !cleaned ? "正在分析素材，马上给你前提候选…" : looksLikeProtocol ? "正在分析素材，马上给你前提候选…" : cleaned;
 
   // Derive simple parts for display
