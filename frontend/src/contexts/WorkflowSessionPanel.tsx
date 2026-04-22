@@ -36,23 +36,19 @@ function SourceBadge({ step, version }: { step?: string; version?: number }) {
 }
 
 function CardItem({ card, isLatest }: { card: WorkflowCard; isLatest?: boolean }) {
-  const { deleteCard, addCard, handoff } = useWorkflow();
+  const { deleteCard, handoff } = useWorkflow();
   const [showMore, setShowMore] = useState(false);
 
-  // 发送内容到目标步骤（带完整来源链）
+  // 发送内容到目标步骤（只负责切换 Tab + 带入内容，不预插结果卡）
+  // 结果卡只在目标步骤真正生成后，通过 onResultDone 写入 session
   const handleSendTo = (targetType: CardType) => {
+    const myLabel = CARD_TYPE_LABELS[card.type];
+    // 追加来源链：跳过与上一个节点相同的重复（如前提→角度→角度→改稿）
     const sourceChain = card.sourceStep
-      ? `${card.sourceStep} → ${CARD_TYPE_LABELS[card.type]}`
-      : CARD_TYPE_LABELS[card.type];
-
-    addCard({
-      type: targetType,
-      title: CARD_TYPE_LABELS[targetType],
-      content: card.content,
-      rawData: card.rawData,
-      status: "success",
-      sourceStep: sourceChain,
-    });
+      ? card.sourceStep.endsWith(myLabel)
+        ? card.sourceStep  // 已以当前卡类型结尾，不重复追加
+        : `${card.sourceStep} → ${myLabel}`
+      : myLabel;
     handoff(targetType, card.content, sourceChain);
     setShowMore(false);
   };

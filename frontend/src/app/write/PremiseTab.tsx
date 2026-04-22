@@ -206,11 +206,16 @@ export default function PremiseTab({
       }
     } catch (err: any) {
       clearTimeout(timeoutId);
+      const msg = String(err);
+      let userMsg = "生成失败，请重试";
       if (err.name === "AbortError") {
-        setStream((s) => ({ ...s, phase: "error", error: "请求超时（120秒）" }));
-      } else {
-        setStream((s) => ({ ...s, phase: "error", error: String(err) }));
+        userMsg = "请求超时（120秒），请稍后重试";
+      } else if (msg.includes("network") || msg.includes("Failed to fetch")) {
+        userMsg = "网络连接异常，请检查网络后重试";
+      } else if (msg.includes("HTTP")) {
+        userMsg = msg;
       }
+      setStream((s) => ({ ...s, phase: "error", error: userMsg }));
     } finally {
       abortRef.current = null;
     }

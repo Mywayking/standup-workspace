@@ -31,6 +31,22 @@ export interface WorkflowSession {
 // ─── LocalStorage ─────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = "workflow_sessions";
+const ACTIVE_KEY = "workflow_active_session";
+
+function loadActiveSession(): WorkflowSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(ACTIVE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function saveActiveSession(session: WorkflowSession | null) {
+  try {
+    if (session) localStorage.setItem(ACTIVE_KEY, JSON.stringify(session));
+    else localStorage.removeItem(ACTIVE_KEY);
+  } catch {}
+}
 
 function loadSessions(): WorkflowSession[] {
   if (typeof window === "undefined") return [];
@@ -84,12 +100,20 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setSessions(loadSessions());
+    // P1-6: restore active session from localStorage
+    const active = loadActiveSession();
+    if (active) setSession(active);
     // UX-4 Step 2: clean up legacy tab-level history keys
     try {
       localStorage.removeItem("premise_history");
       localStorage.removeItem("angles_history");
     } catch {}
   }, []);
+
+  // P1-6: sync session to localStorage on every change
+  useEffect(() => {
+    saveActiveSession(session);
+  }, [session]);
 
   const initSession = useCallback((sourceInput: string) => {
     setSession({

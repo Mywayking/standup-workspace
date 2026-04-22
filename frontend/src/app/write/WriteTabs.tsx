@@ -217,8 +217,8 @@ function WriteTabsInner() {
                   initialData={pendingAngle?.text}
                   sourceStep={pendingAngle?.sourceStep}
                   onClearPending={() => setPendingAngle(null)}
-                  onResultDone={(content, rawData) =>
-                    safeHandleResultDone("angles", content, rawData)
+                  onResultDone={(content, rawData, sourceStep) =>
+                    safeHandleResultDone("angles", content, rawData, sourceStep)
                   }
                 />
               )}

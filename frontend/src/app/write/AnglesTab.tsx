@@ -51,7 +51,7 @@ function formatAnglesShare(result: AnglesResult) {
   return lines.join("\n");
 }
 
-export default function AnglesTab({ onAction, initialData, sourceStep, onClearPending, onResultDone }: { onAction?: (action: string, data?: string, sourceStep?: string) => void; initialData?: string; sourceStep?: string; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown) => void }) {
+export default function AnglesTab({ onAction, initialData, sourceStep, onClearPending, onResultDone }: { onAction?: (action: string, data?: string, sourceStep?: string) => void; initialData?: string; sourceStep?: string; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown, sourceStep?: string) => void }) {
   const [inputText, setInputText] = useState(initialData ?? "");
   const [stream, setStream] = useState<StreamingState>({
     phase: "idle",
@@ -181,11 +181,16 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
       }
     } catch (err: any) {
       clearTimeout(timeoutId);
+      const msg = String(err);
+      let userMsg = "生成失败，请重试";
       if (err.name === "AbortError") {
-        setStream((s) => ({ ...s, phase: "error", error: "请求超时（120秒）" }));
-      } else {
-        setStream((s) => ({ ...s, phase: "error", error: String(err) }));
+        userMsg = "请求超时（120秒），请稍后重试";
+      } else if (msg.includes("network") || msg.includes("Failed to fetch") || msg.includes("fetch failed")) {
+        userMsg = "网络连接异常，请检查网络后重试";
+      } else if (msg.includes("HTTP")) {
+        userMsg = msg; // 保留 HTTP 错误信息
       }
+      setStream((s) => ({ ...s, phase: "error", error: userMsg }));
     } finally {
       abortRef.current = null;
     }
@@ -296,7 +301,7 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
         )}
 
         {hasResult && stream.result && (
-          <AnglesResultView result={stream.result} onAction={onAction} copiedId={copiedId} onCopy={(id) => { setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); }} onRegenerate={handleRegenerate} onResultDone={onResultDone} />
+          <AnglesResultView result={stream.result} onAction={onAction} sourceStep={sourceStep} copiedId={copiedId} onCopy={(id) => { setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); }} onRegenerate={handleRegenerate} onResultDone={onResultDone} />
         )}
       </div>
 
@@ -345,8 +350,18 @@ export default function AnglesTab({ onAction, initialData, sourceStep, onClearPe
   );
 }
 
-function AnglesResultView({ result, onAction, copiedId, onCopy, onRegenerate, onResultDone }: { result: AnglesResult; onAction?: (action: string, data?: string) => void; copiedId: string | null; onCopy: (id: string) => void; onRegenerate?: () => void; onResultDone?: (content: string, rawData: unknown) => void }) {
+function AnglesResultView({ result, onAction, sourceStep, copiedId, onCopy, onRegenerate, onResultDone }: { result: AnglesResult; onAction?: (action: string, data?: string) => void; sourceStep?: string; copiedId: string | null; onCopy: (id: string) => void; onRegenerate?: () => void; onResultDone?: (content: string, rawData: unknown, sourceStep?: string) => void }) {
   const [expandedAngle, setExpandedAngle] = useState<number | null>(null);
+
+  // 结果生成后自动保存到 session（只调用一次）
+  const hasCalledRef = useRef(false);
+  useEffect(() => {
+    if (result && !hasCalledRef.current) {
+      hasCalledRef.current = true;
+      const text = result.recommendation?.name || JSON.stringify(result);
+      onResultDone?.(text, result, sourceStep || "角度分析");
+    }
+  }, [result, sourceStep]);
 
   return (
     <div className="space-y-4">
