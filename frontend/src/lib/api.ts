@@ -93,3 +93,91 @@ export const exportApi = {
     return `${BASE}/api/scripts/${scriptId}/export?${params}`;
   },
 };
+
+// ─── Write / Comedy Tools ────────────────────────────────────────────────────
+
+/**
+ * SSE 流式 POST 请求。
+ * onChunk(data) 每收到一个 data 事件解析后调用。
+ * onEvent(event, data) 处理具名事件（progress | analysis | done | error）。
+ */
+export function streamPost(
+  path: string,
+  body: Record<string, string>,
+  opts?: {
+    onChunk?: (data: string, event: string) => void;
+    onEvent?: (event: string, data: unknown) => void;
+    signal?: AbortSignal;
+    timeoutMs?: number;
+  }
+) {
+  const { onChunk, onEvent, signal, timeoutMs = 180_000 } = opts ?? {};
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  const combinedSignal = signal
+    ? (() => {
+        const s = signal;
+        s.addEventListener("abort", () => controller.abort());
+        return controller.signal;
+      })()
+    : controller.signal;
+
+  return fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: combinedSignal,
+  }).then(async (res) => {
+    clearTimeout(timeout);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`API ${res.status} ${path}: ${text}`);
+    }
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let pendingEvent = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      while (buffer.includes("\n")) {
+        const nl = buffer.indexOf("\n");
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+
+        if (line === "") { pendingEvent = ""; continue; }
+        if (line.startsWith("event: ")) { pendingEvent = line.slice(7).trim(); continue; }
+        if (!line.startsWith("data: ")) continue;
+
+        const dataStr = line.slice(6);
+        onChunk?.(dataStr, pendingEvent);
+        try {
+          const data = JSON.parse(dataStr);
+          onEvent?.(pendingEvent, data);
+        } catch { /* 非 JSON 数据 */ }
+      }
+    }
+  });
+}
+
+export const writeApi = {
+  /** 提炼前提（流式） */
+  extractPremise: (text: string, opts?: Parameters<typeof streamPost>[2]) =>
+    streamPost("/api/extract-premise/stream", { text }, opts),
+
+  /** 梗写前提（流式） */
+  jokeToPremise: (text: string, topic?: string, style?: string, opts?: Parameters<typeof streamPost>[2]) =>
+    streamPost("/api/joke-to-premise", { text, ...(topic ? { topic } : {}), ...(style ? { style } : {}) }, opts),
+
+  /** 找角度（流式） */
+  findAngles: (premise: string, opts?: Parameters<typeof streamPost>[2]) =>
+    streamPost("/api/find-angles/stream", { premise }, opts),
+
+  /** 改稿分析（流式） */
+  analyze: (text: string, opts?: Parameters<typeof streamPost>[2]) =>
+    streamPost("/api/analyze/stream", { text }, opts),
+};

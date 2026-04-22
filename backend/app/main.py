@@ -1,8 +1,10 @@
 import logging
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .database import init_db
 from .config import settings
@@ -15,6 +17,17 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    """为每个请求注入 request_id，所有日志可串联。"""
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        request.state.request_id = request_id
+        # 响应头也透传回去
+        response: Response = await call_next(request)
+        response.headers["x-request-id"] = request_id
+        return response
 
 
 @asynccontextmanager
@@ -31,6 +44,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+app.add_middleware(RequestIDMiddleware)
 
 # CORS
 app.add_middleware(

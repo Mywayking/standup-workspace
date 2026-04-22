@@ -3,6 +3,7 @@ POST /api/feedback
 Body: { "session_id": "xxx", "rating": 1 }
 """
 
+import sys
 from pathlib import Path
 
 # 项目根目录：backend/app/routers/feedback.py → backend/
