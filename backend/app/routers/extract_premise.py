@@ -167,13 +167,13 @@ async def extract_premise(req: dict):
     except ValueError:
         raise HTTPException(503, "TokenHub API key 未配置，请联系管理员")
 
-    result = gateway.generate(LLMRequest(
+    result = await gateway.generate(LLMRequest(
         scene="extract_premise",
         messages=[
             LLMMessage(role="system", content=SYSTEM_PROMPT.strip()),
             LLMMessage(role="user", content=_build_user_prompt(text)),
         ],
-        temperature=0.3,
+        temperature=1.0,
         stream=False,
         request_id=request_id,
     ))
@@ -210,7 +210,7 @@ async def extract_premise_stream(req: dict):
                 LLMMessage(role="system", content=SYSTEM_PROMPT.strip()),
                 LLMMessage(role="user", content=_build_user_prompt(text)),
             ],
-            temperature=0.3,
+            temperature=1.0,
             stream=True,
             request_id=request_id,
         )),

@@ -195,13 +195,13 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
 
     try:
         gateway = llm_gateway()
-        analysis_result_raw = gateway.generate(LLMRequest(
+        analysis_result_raw = await gateway.generate(LLMRequest(
             scene="joke_to_premise_phase1",
             messages=[
                 LLMMessage(role="system", content=JOKE_ANALYSIS_SYSTEM.strip()),
                 LLMMessage(role="user", content=analysis_user),
             ],
-            temperature=0.3,
+            temperature=1.0,
             stream=False,
             request_id=request_id,
         ))
@@ -253,13 +253,13 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
 
     try:
         gateway = llm_gateway()
-        premises_result_raw = gateway.generate(LLMRequest(
+        premises_result_raw = await gateway.generate(LLMRequest(
             scene="joke_to_premise_phase2",
             messages=[
                 LLMMessage(role="system", content=PREMISE_GENERATION_SYSTEM.strip()),
                 LLMMessage(role="user", content=premise_user),
             ],
-            temperature=0.3,
+            temperature=1.0,
             stream=False,
             request_id=request_id,
         ))

@@ -283,13 +283,13 @@ async def joke_to_premise(req: WriteRequest):
     )
 
     try:
-        result = gateway.generate(LLMRequest(
+        result = await gateway.generate(LLMRequest(
             scene="write_joke_to_premise",
             messages=[
                 LLMMessage(role="system", content=JOKE_TO_PREMISE_SYSTEM),
                 LLMMessage(role="user", content=user_prompt),
             ],
-            temperature=0.3,
+            temperature=1.0,
             stream=False,
             request_id=request_id,
         ))
@@ -336,13 +336,13 @@ async def premise_extract(req: WriteRequest):
     user_prompt = f"素材：\n{req.text}\n\n请提炼核心前提，按指定JSON格式返回。"
 
     try:
-        result = gateway.generate(LLMRequest(
+        result = await gateway.generate(LLMRequest(
             scene="write_premise_extract",
             messages=[
                 LLMMessage(role="system", content=PREMISE_EXTRACT_SYSTEM),
                 LLMMessage(role="user", content=user_prompt),
             ],
-            temperature=0.3,
+            temperature=1.0,
             stream=False,
             request_id=request_id,
         ))
@@ -377,13 +377,13 @@ async def find_angle(req: WriteRequest):
     user_prompt = f"前提：{req.text}\n\n请找多个展开角度，按指定JSON格式返回。"
 
     try:
-        result = gateway.generate(LLMRequest(
+        result = await gateway.generate(LLMRequest(
             scene="write_find_angle",
             messages=[
                 LLMMessage(role="system", content=FIND_ANGLE_SYSTEM),
                 LLMMessage(role="user", content=user_prompt),
             ],
-            temperature=0.3,
+            temperature=1.0,
             stream=False,
             request_id=request_id,
         ))
@@ -418,13 +418,13 @@ async def rewrite(req: WriteRequest):
     user_prompt = f"段子：\n{req.text}\n\n请分析并改写，按指定JSON格式返回。"
 
     try:
-        result = gateway.generate(LLMRequest(
+        result = await gateway.generate(LLMRequest(
             scene="write_rewrite",
             messages=[
                 LLMMessage(role="system", content=REWRITE_SYSTEM),
                 LLMMessage(role="user", content=user_prompt),
             ],
-            temperature=0.3,
+            temperature=1.0,
             stream=False,
             request_id=request_id,
         ))

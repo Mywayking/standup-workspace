@@ -212,12 +212,12 @@ async def find_angles(req: dict):
             LLMMessage(role="system", content=SYSTEM_PROMPT.strip()),
             LLMMessage(role="user", content=_build_user_prompt(premise)),
         ],
-        temperature=0.3,
+        temperature=1.0,
         stream=False,
         request_id=request_id,
     )
 
-    result = gateway.generate(llm_req)
+    result = await gateway.generate(llm_req)
 
     if result.error:
         raise HTTPException(500, result.error)
@@ -253,7 +253,7 @@ async def find_angles_stream(req: dict):
             LLMMessage(role="system", content=SYSTEM_PROMPT.strip()),
             LLMMessage(role="user", content=_build_user_prompt(premise)),
         ],
-        temperature=0.3,
+        temperature=1.0,
         stream=True,
         request_id=request_id,
     )

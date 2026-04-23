@@ -298,13 +298,13 @@ async def analyze_text(req: AnalyzeRequest):
     user_prompt = f"段子内容：\n{req.text}\n\n用单口喜剧优秀编剧的视角进行深度分析，严格按Schema格式返回JSON，不要输出Schema以外任何文字。"
 
     try:
-        result = gateway.generate(LLMRequest(
+        result = await gateway.generate(LLMRequest(
             scene="analyze",
             messages=[
                 LLMMessage(role="system", content=SYSTEM_PROMPT.strip()),
                 LLMMessage(role="user", content=user_prompt),
             ],
-            temperature=0.2,
+            temperature=1.0,
             stream=False,
             request_id=request_id,
         ))
@@ -372,7 +372,7 @@ async def analyze_stream(req: AnalyzeRequest):
                 LLMMessage(role="system", content=SYSTEM_PROMPT.strip()),
                 LLMMessage(role="user", content=user_prompt),
             ],
-            temperature=0.2,
+            temperature=1.0,
             stream=True,
             request_id=request_id,
         )),
