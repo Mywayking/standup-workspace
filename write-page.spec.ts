@@ -21,7 +21,7 @@ test.describe('🎤 Write Page - UX-4/UX-6/P2-17 验收测试', () => {
     await page.waitForTimeout(1000);
 
     // Tab 标题可见
-    await expect(page.getByRole('tab', { name: /提炼前提/ })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /提炼前提/ }).first()).toBeVisible();
 
     const criticalErrors = errors.filter(e =>
       !e.includes('favicon') && !e.includes('font') && !e.includes('chrome-extension') &&

@@ -21,8 +21,13 @@ class Settings(BaseSettings):
     s3_secret_key: Optional[str] = None
     cors_origins: list[str] = ["http://localhost:3000"]
     deepseek_api_key: str = ""
+    tokenhub_api_key: str = ""
     kb_dir: str = "/var/www/alwayshaha/comedy-kb/data"
     glm5_api_key: str = ""
+    llm_fallback_models: str = "glm-5,kimi-k2.6,deepseek-chat,minimax-m2.7"
+    llm_single_timeout_seconds: float = 25.0
+    llm_total_timeout_seconds: float = 70.0
+    llm_stream_first_chunk_timeout: float = 12.0
 
 
 settings = Settings()

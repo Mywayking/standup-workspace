@@ -2,8 +2,9 @@
 找角度 API
 输入：一个已有前提
 输出：当前问题判断、6个新角度、推荐角度、继续展开建议
+
+全部模型调用统一走 LLM Gateway（TokenHub 多模型自动回退）
 """
-import asyncio
 import json
 import logging
 import re
@@ -18,14 +19,16 @@ from pydantic import BaseModel
 
 from ..config import settings
 from ..utils.logging import api_logger, llm_logger, new_request_id, set_request_context
+from ..utils.errors import _classify_error
+from ..llm import LLMGateway, llm_gateway, StreamGateway, LLMRequest, LLMMessage
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["find-angles"])
 
-from ..utils.errors import _classify_error
 
 def _extract_json(text: str):
-    import json
+    """解析 JSON（保留，供内部用）"""
     text = re.sub(r"[\x00-\x08\x0E-\x1F\x7F]", "", text)
     text = text.strip()
     try:
@@ -107,7 +110,7 @@ SYSTEM_PROMPT = """
 - 角度名称
 - 新前提（重构后的前提）
 - 展开思路（一句话提示可以从哪里展开）
-- 场景方向（适合写什么场景）
+- 场景方向（适合什么场景）
 - 结尾方向（适合什么样的结尾）
 
 ### 第三步：推荐最优角度
@@ -180,217 +183,86 @@ SYSTEM_PROMPT = """
 """
 
 
-async def _call_llm(client: httpx.AsyncClient, user_prompt: str, deepseek_key: str) -> dict:
-    """DeepSeek only - no MiniMax fallback"""
-    if not deepseek_key:
-        return {"error": "DeepSeek API key 未配置"}
-    try:
-        r = await client.post(
-            "https://api.deepseek.com/chat/completions",
-            json={
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0.3,
-                "max_tokens": 4000,
-            },
-            headers={"Authorization": "Bearer " + deepseek_key, "Content-Type": "application/json"},
-            timeout=httpx.Timeout(150.0),
-        )
-        r.raise_for_status()
-        resp = r.json()["choices"][0]["message"]["content"]
-        result = _extract_json(resp)
-        if result:
-            return result
-        first = resp.find('{')
-        last = resp.rfind('}')
-        if first >= 0 and last > first:
-            import json as _j
-            return _j.loads(resp[first:last+1])
-        return {"error": "返回格式解析失败，请稍后重试"}
-    except httpx.HTTPStatusError as exc:
-        logger.warning(f"[DeepSeek HTTP error in find-angles: {exc}]")
-        return {"error": _classify_error(exc)}
-    except Exception as exc:
-        logger.warning(f"[DeepSeek failed in find-angles: {exc}]")
-        return {"error": _classify_error(exc)}
+def _build_user_prompt(premise: str) -> str:
+    return (
+        "以下是一个脱口秀前提，请为它找角度：\n\n"
+        f"前提：\n{premise}\n\n"
+        "请严格按JSON格式输出，不要输出任何Schema以外的文字。"
+    )
 
 
 @router.post("/find-angles")
 async def find_angles(req: dict):
+    """非流式找角度 - 走 LLM Gateway 多模型回退"""
     premise = req.get("premise", "").strip()
     if len(premise) < 3:
         raise HTTPException(400, "输入的前提太短了（至少3个字）")
 
-    deepseek_key = settings.deepseek_api_key or ""
-    if not deepseek_key:
-        raise HTTPException(503, "DeepSeek API key 未配置，请联系管理员")
+    request_id = new_request_id("fa")
+    set_request_context(request_id, "find-angles")
 
-    user_prompt = (
-        "以下是一个脱口秀前提，请为它找角度：\n\n"
-        f"前提：\n{premise}\n\n"
-        "请严格按JSON格式输出，不要输出任何Schema以外的文字。"
+    try:
+        gateway = llm_gateway()
+    except ValueError:
+        raise HTTPException(503, "TokenHub API key 未配置，请联系管理员")
+
+    llm_req = LLMRequest(
+        scene="find_angles",
+        messages=[
+            LLMMessage(role="system", content=SYSTEM_PROMPT.strip()),
+            LLMMessage(role="user", content=_build_user_prompt(premise)),
+        ],
+        temperature=0.3,
+        stream=False,
+        request_id=request_id,
     )
 
-    async with httpx.AsyncClient() as client:
-        result = await _call_llm(client, user_prompt, deepseek_key)
+    result = gateway.generate(llm_req)
 
-    if "error" in result:
-        raise HTTPException(500, result["error"])
-    return result
+    if result.error:
+        raise HTTPException(500, result.error)
+
+    # Parse the JSON content
+    parsed = _extract_json(result.content)
+    if not parsed:
+        raise HTTPException(500, "返回格式解析失败，请稍后重试")
+
+    # Attach meta to response headers for observability
+    return parsed
 
 
 @router.post("/find-angles/stream")
 async def find_angles_stream(req: dict):
-    import asyncio
+    """流式找角度 - 走 StreamGateway 多模型自动回退"""
     premise = req.get("premise", "").strip()
     if len(premise) < 3:
         raise HTTPException(400, "输入的前提太短了（至少3个字）")
 
-    deepseek_key = settings.deepseek_api_key or ""
-    if not deepseek_key:
-        raise HTTPException(503, "DeepSeek API key 未配置，请联系管理员")
-
-    user_prompt = (
-        "以下是一个脱口秀前提，请为它找角度：\n\n"
-        f"前提：\n{premise}\n\n"
-        "请严格按JSON格式输出，不要输出任何Schema以外的文字。"
-    )
-
-    start_time = time.time()
-    last_heartbeat = [0.0]
     request_id = new_request_id("fa")
     set_request_context(request_id, "find-angles/stream")
 
-    async def event_generator():
-        import json as _json
-        client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
+    key = settings.tokenhub_api_key
+    if not key:
+        raise HTTPException(503, "TokenHub API key 未配置，请联系管理员")
 
-        async def send_heartbeat():
-            elapsed = time.time() - start_time
-            if elapsed - last_heartbeat[0] >= 5.0:
-                last_heartbeat[0] = elapsed
-                llm_logger.log_heartbeat("find_angles_stream", int(elapsed * 1000))
-                yield f"event: progress\ndata: " + _json.dumps({
-                    "elapsed": int(elapsed),
-                    "status": "找角度中...",
-                    "request_id": request_id,
-                }) + "\n\n"
+    gateway = StreamGateway(key)
 
-        async def send_error(msg, error_code=None):
-            extra = {"error": msg}
-            if error_code:
-                extra["error_code"] = error_code
-            yield f"event: error\ndata: " + _json.dumps({"error": msg, "request_id": request_id}) + "\n\n"
-
-        try:
-            try:
-                async with client.stream(
-                    "POST",
-                    "https://api.deepseek.com/chat/completions",
-                    json={
-                        "model": "deepseek-chat",
-                        "messages": [
-                            {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                            {"role": "user", "content": user_prompt},
-                        ],
-                        "temperature": 0.3,
-                        "max_tokens": 4000,
-                        "stream": True,
-                    },
-                    headers={"Authorization": f"Bearer {deepseek_key}", "Content-Type": "application/json"},
-                ) as resp:
-                    if resp.status_code != 200:
-                        body = (await resp.aread()).decode()
-                        llm_logger.log_done("find_angles_stream", int((time.time() - start_time) * 1000), error_code="UPSTREAM_HTTP", retryable=True)
-                        async for err in send_error("内容正在酝酿中，稍后重试一次~", "UPSTREAM_HTTP"): yield err
-                        return
-
-                    json_parts = []
-                    async for line in resp.aiter_lines():
-                        line = line.strip()
-                        if not line.startswith("data: "):
-                            continue
-                        data_str = line[6:]
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            obj = _json.loads(data_str)
-                            token = obj.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                            if token:
-                                # Properly escape for SSE data field:
-                                # 1. Escape backslashes first (to avoid confusion)
-                                # 2. Replace actual newlines with literal \n (backslash + letter n)
-                                # This keeps the SSE data on one line without triggering line split
-                                safe = token.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
-                                yield f"event: token\ndata: " + safe + "\n\n"
-                                json_parts.append(token)
-                        except Exception:
-                            pass
-                        async for hb in send_heartbeat(): yield hb
-
-                    full = "".join(json_parts)
-                    duration = int((time.time() - start_time) * 1000)
-                    result = _extract_json(full)
-                    if result:
-                        llm_logger.log_done("find_angles_stream", duration)
-                        yield f"event: done\ndata: " + _json.dumps(result) + "\n\n"
-                    else:
-                        llm_logger.log_done("find_angles_stream", duration, error_code="PARSE_FAILED", retryable=True)
-                        async for err in send_error("解析失败，请稍后重试", "PARSE_FAILED"): yield err
-            except httpx.HTTPStatusError as exc:
-                llm_logger.log_done("find_angles_stream", int((time.time() - start_time) * 1000), error_code="UPSTREAM_HTTP", retryable=True)
-                async for err in send_error(_classify_error(exc), "UPSTREAM_HTTP"): yield err
-            except Exception as exc:
-                logger.warning(f"[DeepSeek streaming failed: {exc}]")
-                llm_logger.log_done("find_angles_stream", int((time.time() - start_time) * 1000), error_code="STREAM_FAILED", retryable=True)
-                # ── Fallback: try non-stream call ──────────────────────────────
-                yield f"event: progress\ndata: " + _json.dumps({"status": "stream failed, trying fallback...", "request_id": request_id}) + "\n\n"
-                try:
-                    fallback_result = _call_deepseek_sync(user_prompt, deepseek_key)
-                    if "error" not in fallback_result:
-                        llm_logger.log_done("find_angles_stream_fallback", int((time.time() - start_time) * 1000))
-                        yield f"event: done\ndata: " + _json.dumps(fallback_result) + "\n\n"
-                    else:
-                        yield f"event: error\ndata: " + _json.dumps({"error": fallback_result["error"], "request_id": request_id, "error_code": "FALLBACK_FAILED", "retryable": True}) + "\n\n"
-                except Exception as fb_exc:
-                    yield f"event: error\ndata: " + _json.dumps({"error": _classify_error(fb_exc), "request_id": request_id, "error_code": "FALLBACK_EXC", "retryable": True}) + "\n\n"
-        finally:
-            await client.aclose()
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    llm_req = LLMRequest(
+        scene="find_angles",
+        messages=[
+            LLMMessage(role="system", content=SYSTEM_PROMPT.strip()),
+            LLMMessage(role="user", content=_build_user_prompt(premise)),
+        ],
+        temperature=0.3,
+        stream=True,
+        request_id=request_id,
     )
 
-
-def _call_deepseek_sync(user_prompt: str, api_key: str) -> dict:
-    import httpx as _httpx
-    with _httpx.Client(timeout=_httpx.Timeout(150.0)) as client:
-        r = client.post(
-            "https://api.deepseek.com/chat/completions",
-            json={
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0.3,
-                "max_tokens": 4000,
-            },
-            headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
-        )
-        r.raise_for_status()
-        resp = r.json()["choices"][0]["message"]["content"]
-        result = _extract_json(resp)
-        if result:
-            return result
-        first = resp.find('{')
-        last = resp.rfind('}')
-        if first >= 0 and last > first:
-            import json as _j
-            return _j.loads(resp[first:last+1])
-        return {"error": "Parse Failed: " + resp[:150]}
+    return StreamingResponse(
+        gateway.generate(llm_req),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

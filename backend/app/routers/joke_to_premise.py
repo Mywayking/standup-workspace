@@ -1,13 +1,10 @@
 """
 梗写前提 API
 输入：一句梗/包袱句/吐槽句
-输出：梗拆解分析 + 3-5条前提候选（为什么成立/怎么铺垫/适合谁说/起手句）
+输出：梗拆解分析 + 3-5条前提候选
 
-两阶段生成：
-  Phase 1 - 梗拆解：识别梗类型、核心冲突、类比对象、情绪、人设、笑点机制
-  Phase 2 - 前提生成：基于拆解结果生成差异化前提候选
+全部模型调用统一走 LLM Gateway（TokenHub 多模型自动回退）
 """
-import asyncio
 import json
 import logging
 import re
@@ -23,10 +20,10 @@ from pydantic import BaseModel, Field
 from ..config import settings
 from ..utils.logging import api_logger, llm_logger, new_request_id, set_request_context, get_request_id
 from ..utils.errors import _classify_error
+from ..llm import llm_gateway, LLMRequest, LLMMessage
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["joke-to-premise"])
-
 
 
 # ─── Request / Response Schemas ──────────────────────────────────────────────
@@ -84,7 +81,7 @@ PREMISE_GENERATION_SYSTEM = """你是一个中文脱口秀创作助手。
 基于前一步的拆解结果，你需要生成3-5条不同角度的前提候选。
 
 每条前提应该：
-- 有独特的切入角度（自嘲/社会观察/行业视角/人物关系/角色错位等）
+- 有独特的切入角度（自嘲/社会观察/行业视角/人物物关系/角色错位等）
 - 能让观众产生共鸣
 - 有具体的铺垫方向和起手句
 - 口语化、可直接上台讲
@@ -173,45 +170,6 @@ def _extract_json(text: str):
     return None
 
 
-# ─── LLM Call ─────────────────────────────────────────────────────────────────
-
-
-def _call_llm_sync(system_prompt: str, user_prompt: str) -> dict:
-    """同步调用 LLM，DeepSeek only"""
-    deepseek_key = settings.deepseek_api_key
-    if not deepseek_key:
-        return {"error": "DeepSeek API key 未配置"}
-    try:
-        with httpx.Client(timeout=httpx.Timeout(120.0)) as client:
-            r = client.post(
-                "https://api.deepseek.com/chat/completions",
-                json={
-                    "model": "deepseek-chat",
-                    "messages": [
-                        {"role": "system", "content": system_prompt.strip()},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 4000,
-                },
-                headers={"Authorization": "Bearer " + deepseek_key, "Content-Type": "application/json"},
-            )
-            r.raise_for_status()
-            resp = r.json()["choices"][0]["message"]["content"]
-            result = _extract_json(resp)
-            if result:
-                return result
-            first = resp.find("{")
-            last = resp.rfind("}")
-            if first >= 0 and last > first:
-                return json.loads(resp[first : last + 1])
-            return {"error": "返回格式解析失败，请稍后重试"}
-    except httpx.HTTPStatusError as exc:
-        logger.warning(f"[JokeToPremise] DeepSeek HTTP error status={exc.response.status_code}")
-        return {"error": _classify_error(exc)}
-        return {"error": _classify_error(exc)}
-
-
 # ─── Stream Generator ─────────────────────────────────────────────────────────
 
 
@@ -220,7 +178,6 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
     set_request_context(request_id, "joke-to-premise")
     _json = json.dumps
 
-    # Build hints
     topic_hint = f"主题偏好：{req.topic}" if req.topic else ""
     style_hint = f"风格偏好：{req.style}" if req.style else ""
 
@@ -231,30 +188,41 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
         style_hint=style_hint,
     ).strip()
 
-    # ── Phase 1: 梗拆解 ───────────────────────────────────────────────────────
-    analysis_user = JOKE_ANALYSIS_USER.format(
-        text=req.text,
-        topic_hint=topic_hint,
-        style_hint=style_hint,
-    ).strip()
-
     yield f"event: progress\ndata: {_json({'phase': 'analyzing', 'message': '正在拆解梗...', 'request_id': request_id})}\n\n"
 
-    llm_logger.log_start("jtp_phase1_analysis", model="deepseek-chat", provider="deepseek")
+    llm_logger.log_start("jtp_phase1_analysis", model="multi", provider="tokenhub")
     start_phase1 = time.time()
+
     try:
-        analysis_result = _call_llm_sync(JOKE_ANALYSIS_SYSTEM, analysis_user)
+        gateway = llm_gateway()
+        analysis_result_raw = gateway.generate(LLMRequest(
+            scene="joke_to_premise_phase1",
+            messages=[
+                LLMMessage(role="system", content=JOKE_ANALYSIS_SYSTEM.strip()),
+                LLMMessage(role="user", content=analysis_user),
+            ],
+            temperature=0.3,
+            stream=False,
+            request_id=request_id,
+        ))
+        if analysis_result_raw.error:
+            duration_phase1 = int((time.time() - start_phase1) * 1000)
+            llm_logger.log_done("jtp_phase1_analysis", duration_phase1, error_code="ANALYSIS_FAILED", retryable=True)
+            yield f"event: error\ndata: {_json({'error': analysis_result_raw.error, 'request_id': request_id, 'error_code': 'ANALYSIS_FAILED', 'retryable': True, 'selected_model': analysis_result_raw.selected_model, 'attempt_count': analysis_result_raw.attempt_count})}\n\n"
+            return
+        analysis_result = _extract_json(analysis_result_raw.content)
+        if not analysis_result:
+            duration_phase1 = int((time.time() - start_phase1) * 1000)
+            llm_logger.log_done("jtp_phase1_analysis", duration_phase1, error_code="PARSE_FAILED", retryable=True)
+            yield f"event: error\ndata: {_json({'error': '解析失败，请稍后重试', 'request_id': request_id, 'error_code': 'PARSE_FAILED', 'retryable': True})}\n\n"
+            return
     except Exception as exc:
         duration_phase1 = int((time.time() - start_phase1) * 1000)
         llm_logger.log_done("jtp_phase1_analysis", duration_phase1, error_code="PHASE1_EXC", retryable=True)
         yield f"event: error\ndata: {_json({'error': _classify_error(exc), 'request_id': request_id, 'error_code': 'PHASE1_EXC', 'retryable': True})}\n\n"
         return
-    duration_phase1 = int((time.time() - start_phase1) * 1000)
 
-    if analysis_result.get("error"):
-        llm_logger.log_done("jtp_phase1_analysis", duration_phase1, error_code="ANALYSIS_FAILED", retryable=True)
-        yield f"event: error\ndata: {_json({'error': analysis_result['error'], 'request_id': request_id, 'error_code': 'ANALYSIS_FAILED', 'retryable': True})}\n\n"
-        return
+    duration_phase1 = int((time.time() - start_phase1) * 1000)
     llm_logger.log_done("jtp_phase1_analysis", duration_phase1)
 
     # Emit analysis phase
@@ -267,10 +235,9 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
         if suggestion:
             yield f"event: warning\ndata: {_json({'message': suggestion, 'input_type': input_type})}\n\n"
 
-    # Heartbeat before phase 2
+    # ── Phase 2: 前提生成 ────────────────────────────────────────────────────
     yield f"event: progress\ndata: {_json({'phase': 'generating', 'message': '正在生成前提候选...', 'request_id': request_id})}\n\n"
 
-    # ── Phase 2: 前提生成 ────────────────────────────────────────────────────
     premise_user = PREMISE_GENERATION_USER.format(
         text=req.text,
         joke_type=analysis_result.get("joke_type", "unknown"),
@@ -281,26 +248,45 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
         persona=", ".join(analysis_result.get("persona_candidates", [])[:2]),
     )
 
-    llm_logger.log_start("jtp_phase2_premise", model="deepseek-chat", provider="deepseek")
+    llm_logger.log_start("jtp_phase2_premise", model="multi", provider="tokenhub")
     start_phase2 = time.time()
+
     try:
-        premises_result = _call_llm_sync(PREMISE_GENERATION_SYSTEM, premise_user)
+        gateway = llm_gateway()
+        premises_result_raw = gateway.generate(LLMRequest(
+            scene="joke_to_premise_phase2",
+            messages=[
+                LLMMessage(role="system", content=PREMISE_GENERATION_SYSTEM.strip()),
+                LLMMessage(role="user", content=premise_user),
+            ],
+            temperature=0.3,
+            stream=False,
+            request_id=request_id,
+        ))
+        if premises_result_raw.error:
+            duration_phase2 = int((time.time() - start_phase2) * 1000)
+            llm_logger.log_done("jtp_phase2_premise", duration_phase2, error_code="PREMISE_FAILED", retryable=True)
+            yield f"event: error\ndata: {_json({'error': premises_result_raw.error, 'request_id': request_id, 'error_code': 'PREMISE_FAILED', 'retryable': True, 'selected_model': premises_result_raw.selected_model, 'attempt_count': premises_result_raw.attempt_count})}\n\n"
+            return
+
+        premises_result = _extract_json(premises_result_raw.content)
+        if not premises_result:
+            duration_phase2 = int((time.time() - start_phase2) * 1000)
+            llm_logger.log_done("jtp_phase2_premise", duration_phase2, error_code="PARSE_FAILED", retryable=True)
+            yield f"event: error\ndata: {_json({'error': '解析失败，请稍后重试', 'request_id': request_id, 'error_code': 'PARSE_FAILED', 'retryable': True})}\n\n"
+            return
+
     except Exception as exc:
         duration_phase2 = int((time.time() - start_phase2) * 1000)
         llm_logger.log_done("jtp_phase2_premise", duration_phase2, error_code="PHASE2_EXC", retryable=True)
         yield f"event: error\ndata: {_json({'error': _classify_error(exc), 'request_id': request_id, 'error_code': 'PHASE2_EXC', 'retryable': True})}\n\n"
         return
-    duration_phase2 = int((time.time() - start_phase2) * 1000)
 
-    if isinstance(premises_result, dict) and premises_result.get("error"):
-        llm_logger.log_done("jtp_phase2_premise", duration_phase2, error_code="PREMISE_FAILED", retryable=True)
-        yield f"event: error\ndata: {_json({'error': premises_result['error'], 'request_id': request_id, 'error_code': 'PREMISE_FAILED', 'retryable': True})}\n\n"
-        return
+    duration_phase2 = int((time.time() - start_phase2) * 1000)
     llm_logger.log_done("jtp_phase2_premise", duration_phase2)
 
     # Ensure we have a list
     if isinstance(premises_result, dict):
-        # If the model returned a dict with a "premises" key
         if "premises" in premises_result:
             premises = premises_result["premises"]
         elif "result" in premises_result:
@@ -312,7 +298,7 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
     else:
         premises = []
 
-    # Normalize each premise - ensure all required fields exist
+    # Normalize each premise
     normalized = []
     for i, p in enumerate(premises[:5], 1):
         if isinstance(p, dict):
@@ -325,6 +311,7 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
                 "emotion": p.get("emotion", ""),
                 "opening_line": p.get("opening_line", ""),
             })
+
     if not normalized:
         yield f"event: error\ndata: {_json({'error': '生成前提失败，请重试', 'request_id': request_id, 'error_code': 'NORMALIZE_FAILED', 'retryable': True})}\n\n"
         return
@@ -354,7 +341,7 @@ async def joke_to_premise(req: JokeToPremiseRequest):
       analysis → 梗拆解结果
       warning  → 输入类型警告（可选）
       done     → 最终结果
-      error    → 错误
+      error    → 错误（带 error_code / retryable / selected_model / attempt_count）
     """
     if len(req.text.strip()) < 3:
         raise HTTPException(400, "请输入一句完整的梗（至少3个字）")

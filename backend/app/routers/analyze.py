@@ -12,10 +12,13 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..config import settings
+from ..llm import llm_gateway, StreamGateway, LLMRequest, LLMMessage
 from ..utils.errors import _classify_error, send_error
+from ..utils.logging import new_request_id, set_request_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["analyze"])
@@ -280,182 +283,101 @@ async def _analyze_all_fast(client: httpx.AsyncClient, text: str, deepseek_key: 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_text(req: AnalyzeRequest):
+    """段子分析 — 走 LLM Gateway 多模型回退"""
     if len(req.text) < 20:
         raise HTTPException(400, "段子内容太短了（至少20字）")
 
-    deepseek_key = settings.deepseek_api_key or ""
-    if not deepseek_key:
-        raise HTTPException(503, "DeepSeek API key 未配置，请联系管理员")
+    request_id = new_request_id("anlz")
+    set_request_context(request_id, "analyze")
 
-    raw_segments = _split_segments(req.text)
-    raw_segments = raw_segments[:20]
+    try:
+        gateway = llm_gateway()
+    except ValueError:
+        raise HTTPException(503, "TokenHub API key 未配置，请联系管理员")
 
-    async with httpx.AsyncClient() as client:
-        result = await _analyze_all_fast(client, req.text, deepseek_key)
-        if "error" in result:
-            raise HTTPException(500, result["error"])
+    user_prompt = f"段子内容：\n{req.text}\n\n用单口喜剧优秀编剧的视角进行深度分析，严格按Schema格式返回JSON，不要输出Schema以外任何文字。"
+
+    try:
+        result = gateway.generate(LLMRequest(
+            scene="analyze",
+            messages=[
+                LLMMessage(role="system", content=SYSTEM_PROMPT.strip()),
+                LLMMessage(role="user", content=user_prompt),
+            ],
+            temperature=0.2,
+            stream=False,
+            request_id=request_id,
+        ))
+        if result.error:
+            raise HTTPException(500, result.error)
+
+        parsed = _extract_json(result.content)
+        if not parsed:
+            raise HTTPException(500, "Parse failed: " + result.content[:200])
 
         return AnalyzeResponse(
-            evaluation=result.get("evaluation", {}),
-            performer_tags=result.get("performer_tags", []),
-            premise=result.get("premise", ""),
-            theme_refined=result.get("theme_refined", ""),
-            comedy_type=result.get("comedy_type", ""),
-            structures=result.get("structures", ""),
-            techniques=result.get("techniques", []),
-            segments=result.get("segments", []),
-            improved_script=result.get("improved_script", ""),
-            script_changes=result.get("script_changes", []),
-            style_hints=result.get("style_hints", []),
-            next_suggestion=result.get("next_suggestion", ""),
+            evaluation=parsed.get("evaluation", {}),
+            performer_tags=parsed.get("performer_tags", []),
+            premise=parsed.get("premise", ""),
+            theme_refined=parsed.get("theme_refined", ""),
+            comedy_type=parsed.get("comedy_type", ""),
+            structures=parsed.get("structures", ""),
+            techniques=parsed.get("techniques", []),
+            segments=parsed.get("segments", []),
+            improved_script=parsed.get("improved_script", ""),
+            script_changes=parsed.get("script_changes", []),
+            style_hints=parsed.get("style_hints", []),
+            next_suggestion=parsed.get("next_suggestion", ""),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"analyze_text error: {exc}")
+        return AnalyzeResponse(
+            evaluation={},
+            performer_tags=[],
+            premise="",
+            theme_refined="",
+            comedy_type="",
+            structures="",
+            techniques=[],
+            segments=[],
+            improved_script="",
+            script_changes=[],
+            style_hints=[],
+            next_suggestion="",
         )
 
 
 @router.post("/analyze/stream")
 async def analyze_stream(req: AnalyzeRequest):
-    from fastapi.responses import StreamingResponse
-    import asyncio
-
+    """段子分析流式版 — 走 StreamGateway 多模型自动回退"""
     if len(req.text) < 20:
         raise HTTPException(400, "段子内容太短了（至少20字）")
 
-    deepseek_key = settings.deepseek_api_key or ""
-    if not deepseek_key:
-        raise HTTPException(503, "DeepSeek API key 未配置，请联系管理员")
+    request_id = new_request_id("anlz_s")
+    set_request_context(request_id, "analyze/stream")
 
-    user = "段子内容：\n" + req.text + "\n\n用单口喜剧优秀编剧的视角进行深度分析，严格按Schema格式返回JSON，不要输出Schema以外任何文字。"
+    key = settings.tokenhub_api_key
+    if not key:
+        raise HTTPException(503, "TokenHub API key 未配置，请联系管理员")
 
-    request_id = str(uuid.uuid4())[:8]
-    start_time = time.time()
-    last_heartbeat = [0.0]
-
-    async def event_generator():
-        import json as _json
-        client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
-
-        async def send_heartbeat():
-            elapsed = time.time() - start_time
-            if elapsed - last_heartbeat[0] >= 5.0:
-                last_heartbeat[0] = elapsed
-                yield f"event: progress\ndata: " + _json.dumps({
-                    "request_id": request_id,
-                    "elapsed": int(elapsed),
-                    "status": "analyzing",
-                }) + "\n\n"
-
-        async def send_error(msg):
-            yield "event: error\ndata: " + _json.dumps({"error": msg, "request_id": request_id}) + "\n\n"
-
-        try:
-            async with client.stream(
-                "POST",
-                "https://api.deepseek.com/chat/completions",
-                json={
-                    "model": "deepseek-chat",
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                        {"role": "user", "content": user},
-                    ],
-                    "temperature": 0.2,
-                    "max_tokens": 6000,
-                    "stream": True,
-                },
-                headers={"Authorization": f"Bearer {deepseek_key}", "Content-Type": "application/json"},
-            ) as resp:
-                if resp.status_code != 200:
-                    async for err in send_error(_classify_error(exc)): yield err
-                    return
-
-                json_parts = []
-                async for line in resp.aiter_lines():
-                    line = line.strip()
-                    if not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        obj = _json.loads(data_str)
-                        token = obj.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                        if token:
-                            encoded = _json.dumps(token)
-                            inner = encoded[1:-1]  # strip JSON quotes
-                            yield "event: token\ndata: " + inner + "\n\n"
-                            json_parts.append(token)
-                    except Exception:
-                        pass
-                    async for hb in send_heartbeat(): yield hb
-
-                full_content = "".join(json_parts)
-                result = _extract_json(full_content)
-                if result:
-                    final = {
-                        "evaluation": result.get("evaluation", {}),
-                        "performer_tags": result.get("performer_tags", []),
-                        "premise": result.get("premise", ""),
-                        "theme_refined": result.get("theme_refined", ""),
-                        "comedy_type": result.get("comedy_type", ""),
-                        "structures": result.get("structures", ""),
-                        "techniques": result.get("techniques", []),
-                        "segments": result.get("segments", []),
-                        "improved_script": result.get("improved_script", ""),
-                        "script_changes": result.get("script_changes", []),
-                        "style_hints": result.get("style_hints", []),
-                        "next_suggestion": result.get("next_suggestion", ""),
-                    }
-                    yield "event: done\ndata: " + _json.dumps(final) + "\n\n"
-                else:
-                    async for err in send_error("解析失败，请稍后重试"): yield err
-        except httpx.HTTPStatusError as exc:
-            async for err in send_error(_classify_error(exc)): yield err
-        except Exception as exc:
-            logger.warning(f"[DeepSeek streaming failed: {exc}]")
-            async for err in send_error(_classify_error(exc)): yield err
-        finally:
-            await client.aclose()
+    gateway = StreamGateway(key)
+    user_prompt = f"段子内容：\n{req.text}\n\n用单口喜剧优秀编剧的视角进行深度分析，严格按Schema格式返回JSON，不要输出Schema以外任何文字。"
 
     return StreamingResponse(
-        event_generator(),
+        gateway.generate(LLMRequest(
+            scene="analyze_stream",
+            messages=[
+                LLMMessage(role="system", content=SYSTEM_PROMPT.strip()),
+                LLMMessage(role="user", content=user_prompt),
+            ],
+            temperature=0.2,
+            stream=True,
+            request_id=request_id,
+        )),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-
-
-def _call_deepseek_sync(user_prompt: str, api_key: str) -> dict:
-    """Synchronous httpx call (runs in thread pool to avoid blocking event loop)."""
-    import httpx as _httpx
-    with _httpx.Client(timeout=_httpx.Timeout(150.0)) as client:
-        r = client.post(
-            "https://api.deepseek.com/chat/completions",
-            json={
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0.2,
-                "max_tokens": 6000,
-            },
-            headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
-        )
-        r.raise_for_status()
-        resp_content = r.json()["choices"][0]["message"]["content"]
-        result = _extract_json(resp_content)
-        if not result:
-            first_brace = resp_content.find("{")
-            last_brace = resp_content.rfind("}")
-            if first_brace >= 0 and last_brace > first_brace:
-                try:
-                    import json as _j
-                    return _j.loads(resp_content[first_brace:last_brace + 1])
-                except Exception:
-                    pass
-            return {"error": "Parse Failed: " + resp_content[:150], "raw_content": resp_content}
-        return result
 
 

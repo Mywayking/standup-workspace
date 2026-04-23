@@ -2,6 +2,8 @@
 提炼前提 API
 输入：一段素材/情绪/事件/观察
 输出：主题、态度、核心矛盾、5条前提候选、推荐前提、段子类型建议、后续展开建议
+
+全部模型调用统一走 LLM Gateway（TokenHub 多模型自动回退）
 """
 import asyncio
 import json
@@ -11,14 +13,14 @@ import time
 import uuid
 from typing import Optional
 
-
-
 import httpx
 from ..utils.errors import _classify_error
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from ..config import settings
+from ..llm import llm_gateway, StreamGateway, LLMRequest, LLMMessage
+from ..utils.logging import new_request_id, set_request_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["extract-premise"])
@@ -142,193 +144,76 @@ SYSTEM_PROMPT = """
 """
 
 
-async def _call_llm(client: httpx.AsyncClient, user_prompt: str, deepseek_key: str) -> dict:
-    """Call DeepSeek only."""
-    if not deepseek_key:
-        return {"error": "DeepSeek API key 未配置"}
-    try:
-        r = await client.post(
-            "https://api.deepseek.com/chat/completions",
-            json={
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0.3,
-                "max_tokens": 4000,
-            },
-            headers={"Authorization": "Bearer " + deepseek_key, "Content-Type": "application/json"},
-            timeout=httpx.Timeout(150.0),
-        )
-        r.raise_for_status()
-        resp = r.json()["choices"][0]["message"]["content"]
-        result = _extract_json(resp)
-        if result:
-            return result
-        first = resp.find('{')
-        last = resp.rfind('}')
-        if first >= 0 and last > first:
-            import json as _j
-            return _j.loads(resp[first:last+1])
-        return {"error": "返回格式解析失败，请稍后重试"}
-    except httpx.HTTPStatusError as exc:
-        logger.warning(f"[DeepSeek HTTP error in extract-premise] status={exc.response.status_code}")
-        return {"error": _classify_error(exc)}
-    except Exception as exc:
-        logger.warning(f"[DeepSeek failed in extract-premise: {exc}]")
-        return {"error": _classify_error(exc)}
+def _build_user_prompt(text: str) -> str:
+    return (
+        "以下是一段脱口秀演员的素材，请提炼出喜剧前提：\n\n"
+        f"素材：\n{text}\n\n"
+        "请严格按JSON格式输出，不要输出任何Schema以外的文字。"
+    )
 
 
 @router.post("/extract-premise")
 async def extract_premise(req: dict):
-    """
-    Non-streaming version — input: { text: string }
-    """
+    """Non-streaming version — 走 LLM Gateway 多模型回退"""
     text = req.get("text", "").strip()
     if len(text) < 5:
         raise HTTPException(400, "Text too short (min 5 chars)")
 
-    deepseek_key = settings.deepseek_api_key or ""
-    if not deepseek_key:
-        raise HTTPException(503, "DeepSeek API key 未配置，请联系管理员")
+    request_id = new_request_id("ep")
+    set_request_context(request_id, "extract-premise")
 
-    user_prompt = (
-        "以下是一段脱口秀演员的素材，请提炼出喜剧前提：\n\n"
-        f"素材：\n{text}\n\n"
-        "请严格按JSON格式输出，不要输出任何Schema以外的文字。"
-    )
+    try:
+        gateway = llm_gateway()
+    except ValueError:
+        raise HTTPException(503, "TokenHub API key 未配置，请联系管理员")
 
-    async with httpx.AsyncClient() as client:
-        result = await _call_llm(client, user_prompt, deepseek_key)
+    result = gateway.generate(LLMRequest(
+        scene="extract_premise",
+        messages=[
+            LLMMessage(role="system", content=SYSTEM_PROMPT.strip()),
+            LLMMessage(role="user", content=_build_user_prompt(text)),
+        ],
+        temperature=0.3,
+        stream=False,
+        request_id=request_id,
+    ))
 
-    if "error" in result:
-        raise HTTPException(500, result["error"])
-    return result
+    if result.error:
+        raise HTTPException(500, result.error)
+
+    parsed = _extract_json(result.content)
+    if not parsed:
+        raise HTTPException(500, "返回格式解析失败，请稍后重试")
+    return parsed
 
 
 @router.post("/extract-premise/stream")
 async def extract_premise_stream(req: dict):
-    """Streaming version — SSE events: theme, attitude, conflict, candidate, recommendation, done"""
-    import asyncio
+    """Streaming version — 走 StreamGateway 多模型自动回退"""
     text = req.get("text", "").strip()
     if len(text) < 5:
         raise HTTPException(400, "素材太短了（至少5字）")
 
-    deepseek_key = settings.deepseek_api_key or ""
-    if not deepseek_key:
-        raise HTTPException(503, "DeepSeek API key 未配置，请联系管理员")
+    request_id = new_request_id("ep")
+    set_request_context(request_id, "extract-premise/stream")
 
-    user_prompt = (
-        "以下是一段脱口秀演员的素材，请提炼出喜剧前提：\n\n"
-        f"素材：\n{text}\n\n"
-        "请严格按JSON格式输出，不要输出任何Schema以外的文字。"
-    )
+    key = settings.tokenhub_api_key
+    if not key:
+        raise HTTPException(503, "TokenHub API key 未配置，请联系管理员")
 
-    start_time = time.time()
-    last_heartbeat = [0.0]
-
-    async def event_generator():
-        import json as _json
-        client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
-
-        async def send_heartbeat():
-            elapsed = time.time() - start_time
-            if elapsed - last_heartbeat[0] >= 5.0:
-                last_heartbeat[0] = elapsed
-                yield f"event: progress\ndata: " + _json.dumps({
-                    "elapsed": int(elapsed),
-                    "status": "提炼前提中...",
-                }) + "\n\n"
-
-        async def send_error(msg):
-            yield f"event: error\ndata: " + _json.dumps({"error": msg}) + "\n\n"
-
-        try:
-            async with client.stream(
-                "POST",
-                "https://api.deepseek.com/chat/completions",
-                json={
-                    "model": "deepseek-chat",
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 4000,
-                    "stream": True,
-                },
-                headers={"Authorization": f"Bearer {deepseek_key}", "Content-Type": "application/json"},
-            ) as resp:
-                if resp.status_code != 200:
-                    async for err in send_error(_classify_error(exc)): yield err
-                    return
-
-                json_parts = []
-                async for line in resp.aiter_lines():
-                    line = line.strip()
-                    if not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        obj = _json.loads(data_str)
-                        token = obj.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                        if token:
-                            encoded = _json.dumps(token)
-                            inner = encoded[1:-1]  # strip JSON quotes
-                            yield f"event: token\ndata: " + inner + "\n\n"
-                            json_parts.append(token)
-                    except Exception:
-                        pass
-                    async for hb in send_heartbeat(): yield hb
-
-                full = "".join(json_parts)
-                result = _extract_json(full)
-                if result:
-                    yield f"event: done\ndata: " + _json.dumps(result) + "\n\n"
-                else:
-                    async for err in send_error("解析失败，请稍后重试"): yield err
-        except httpx.HTTPStatusError as exc:
-            async for err in send_error(_classify_error(exc)): yield err
-        except Exception as exc:
-            logger.warning(f"[DeepSeek streaming failed: {exc}]")
-            async for err in send_error(_classify_error(exc)): yield err
-        finally:
-            await client.aclose()
+    gateway = StreamGateway(key)
 
     return StreamingResponse(
-        event_generator(),
+        gateway.generate(LLMRequest(
+            scene="extract_premise",
+            messages=[
+                LLMMessage(role="system", content=SYSTEM_PROMPT.strip()),
+                LLMMessage(role="user", content=_build_user_prompt(text)),
+            ],
+            temperature=0.3,
+            stream=True,
+            request_id=request_id,
+        )),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-def _call_deepseek_sync(user_prompt: str, api_key: str) -> dict:
-    import httpx as _httpx
-    with _httpx.Client(timeout=_httpx.Timeout(150.0)) as client:
-        r = client.post(
-            "https://api.deepseek.com/chat/completions",
-            json={
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT.strip()},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0.3,
-                "max_tokens": 4000,
-            },
-            headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
-        )
-        r.raise_for_status()
-        resp = r.json()["choices"][0]["message"]["content"]
-        result = _extract_json(resp)
-        if result:
-            return result
-        first = resp.find('{')
-        last = resp.rfind('}')
-        if first >= 0 and last > first:
-            import json as _j
-            return _j.loads(resp[first:last+1])
-        return {"error": "Parse Failed: " + resp[:150]}

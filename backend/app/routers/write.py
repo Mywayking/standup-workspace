@@ -16,6 +16,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..config import settings
+from ..llm import llm_gateway, LLMRequest, LLMMessage
+from ..utils.logging import new_request_id, set_request_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/write", tags=["write"])
@@ -260,15 +262,17 @@ async def _call_llm(system: str, user: str, api_key: str, model: str = "deepseek
 
 @router.post("/joke-to-premise", response_model=JokeToPremiseResponse)
 async def joke_to_premise(req: WriteRequest):
-    """输入一句梗，反推3-5条前提候选"""
+    """输入一句梗，反推3-5条前提候选 — 走 LLM Gateway 多模型回退"""
     if len(req.text) < 5:
         raise HTTPException(400, "梗太短了（至少5个字）")
 
-    api_key = settings.deepseek_api_key or ""
-    if not api_key:
-        raise HTTPException(503, "No LLM API key configured")
+    request_id = new_request_id("wt_jtp")
+    set_request_context(request_id, "write/joke-to-premise")
 
-    request_id = f"jtp_{uuid.uuid4().hex[:8]}"
+    try:
+        gateway = llm_gateway()
+    except ValueError:
+        raise HTTPException(503, "TokenHub API key 未配置，请联系管理员")
 
     user_prompt = JOKE_TO_PREMISE_USER_TPL.format(
         text=req.text,
@@ -279,18 +283,29 @@ async def joke_to_premise(req: WriteRequest):
     )
 
     try:
-        content = await _call_llm(JOKE_TO_PREMISE_SYSTEM, user_prompt, api_key)
-        content = re.sub(r"<thinking>.*?</thinking>", "", content, flags=re.DOTALL)
-        result = _extract_json(content)
+        result = gateway.generate(LLMRequest(
+            scene="write_joke_to_premise",
+            messages=[
+                LLMMessage(role="system", content=JOKE_TO_PREMISE_SYSTEM),
+                LLMMessage(role="user", content=user_prompt),
+            ],
+            temperature=0.3,
+            stream=False,
+            request_id=request_id,
+        ))
+        if result.error:
+            raise HTTPException(500, result.error)
 
-        if not result:
-            raise HTTPException(500, f"Parse failed: {content[:200]}")
+        content = re.sub(r"<thinking>.*?</thinking>", "", result.content, flags=re.DOTALL)
+        parsed = _extract_json(content)
+        if not parsed:
+            raise HTTPException(500, f"Parse failed: {result.content[:200]}")
 
         return JokeToPremiseResponse(
             request_id=request_id,
-            input_type=result.get("input_type", "joke_line"),
-            analysis=JokeAnalysis(**result["analysis"]) if result.get("analysis") else None,
-            premises=[PremiseCandidate(**p) for p in result.get("premises", [])],
+            input_type=parsed.get("input_type", "joke_line"),
+            analysis=JokeAnalysis(**parsed["analysis"]) if parsed.get("analysis") else None,
+            premises=[PremiseCandidate(**p) for p in parsed.get("premises", [])],
         )
     except HTTPException:
         raise
@@ -306,22 +321,38 @@ async def joke_to_premise(req: WriteRequest):
 
 @router.post("/premise-extract")
 async def premise_extract(req: WriteRequest):
-    """从素材提炼前提"""
+    """从素材提炼前提 — 走 LLM Gateway 多模型回退"""
     if len(req.text) < 10:
         raise HTTPException(400, "素材太短了（至少10个字）")
 
-    api_key = settings.deepseek_api_key or ""
-    if not api_key:
-        raise HTTPException(503, "No LLM API key configured")
+    request_id = new_request_id("wt_pe")
+    set_request_context(request_id, "write/premise-extract")
+
+    try:
+        gateway = llm_gateway()
+    except ValueError:
+        raise HTTPException(503, "TokenHub API key 未配置，请联系管理员")
 
     user_prompt = f"素材：\n{req.text}\n\n请提炼核心前提，按指定JSON格式返回。"
 
     try:
-        content = await _call_llm(PREMISE_EXTRACT_SYSTEM, user_prompt, api_key)
-        result = _extract_json(content)
-        if not result:
-            raise HTTPException(500, f"Parse failed: {content[:200]}")
-        return result
+        result = gateway.generate(LLMRequest(
+            scene="write_premise_extract",
+            messages=[
+                LLMMessage(role="system", content=PREMISE_EXTRACT_SYSTEM),
+                LLMMessage(role="user", content=user_prompt),
+            ],
+            temperature=0.3,
+            stream=False,
+            request_id=request_id,
+        ))
+        if result.error:
+            raise HTTPException(500, result.error)
+
+        parsed = _extract_json(result.content)
+        if not parsed:
+            raise HTTPException(500, f"Parse failed: {result.content[:200]}")
+        return parsed
     except HTTPException:
         raise
     except Exception as exc:
@@ -331,22 +362,38 @@ async def premise_extract(req: WriteRequest):
 
 @router.post("/find-angle")
 async def find_angle(req: WriteRequest):
-    """为一个前提找多个角度"""
+    """为一个前提找多个角度 — 走 LLM Gateway 多模型回退"""
     if len(req.text) < 5:
         raise HTTPException(400, "前提太短了（至少5个字）")
 
-    api_key = settings.deepseek_api_key or ""
-    if not api_key:
-        raise HTTPException(503, "No LLM API key configured")
+    request_id = new_request_id("wt_fa")
+    set_request_context(request_id, "write/find-angle")
+
+    try:
+        gateway = llm_gateway()
+    except ValueError:
+        raise HTTPException(503, "TokenHub API key 未配置，请联系管理员")
 
     user_prompt = f"前提：{req.text}\n\n请找多个展开角度，按指定JSON格式返回。"
 
     try:
-        content = await _call_llm(FIND_ANGLE_SYSTEM, user_prompt, api_key)
-        result = _extract_json(content)
-        if not result:
-            raise HTTPException(500, f"Parse failed: {content[:200]}")
-        return result
+        result = gateway.generate(LLMRequest(
+            scene="write_find_angle",
+            messages=[
+                LLMMessage(role="system", content=FIND_ANGLE_SYSTEM),
+                LLMMessage(role="user", content=user_prompt),
+            ],
+            temperature=0.3,
+            stream=False,
+            request_id=request_id,
+        ))
+        if result.error:
+            raise HTTPException(500, result.error)
+
+        parsed = _extract_json(result.content)
+        if not parsed:
+            raise HTTPException(500, f"Parse failed: {result.content[:200]}")
+        return parsed
     except HTTPException:
         raise
     except Exception as exc:
@@ -356,22 +403,38 @@ async def find_angle(req: WriteRequest):
 
 @router.post("/rewrite")
 async def rewrite(req: WriteRequest):
-    """改稿"""
+    """改稿 — 走 LLM Gateway 多模型回退"""
     if len(req.text) < 10:
         raise HTTPException(400, "段子太短了（至少10个字）")
 
-    api_key = settings.deepseek_api_key or ""
-    if not api_key:
-        raise HTTPException(503, "No LLM API key configured")
+    request_id = new_request_id("wt_rw")
+    set_request_context(request_id, "write/rewrite")
+
+    try:
+        gateway = llm_gateway()
+    except ValueError:
+        raise HTTPException(503, "TokenHub API key 未配置，请联系管理员")
 
     user_prompt = f"段子：\n{req.text}\n\n请分析并改写，按指定JSON格式返回。"
 
     try:
-        content = await _call_llm(REWRITE_SYSTEM, user_prompt, api_key)
-        result = _extract_json(content)
-        if not result:
-            raise HTTPException(500, f"Parse failed: {content[:200]}")
-        return result
+        result = gateway.generate(LLMRequest(
+            scene="write_rewrite",
+            messages=[
+                LLMMessage(role="system", content=REWRITE_SYSTEM),
+                LLMMessage(role="user", content=user_prompt),
+            ],
+            temperature=0.3,
+            stream=False,
+            request_id=request_id,
+        ))
+        if result.error:
+            raise HTTPException(500, result.error)
+
+        parsed = _extract_json(result.content)
+        if not parsed:
+            raise HTTPException(500, f"Parse failed: {result.content[:200]}")
+        return parsed
     except HTTPException:
         raise
     except Exception as exc:
