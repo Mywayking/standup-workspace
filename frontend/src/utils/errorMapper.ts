@@ -14,7 +14,9 @@ export function mapUserError(err: unknown, fallback = "生成失败，请重试"
     msg.includes("Failed to fetch") ||
     msg.includes("fetch failed") ||
     msg.includes("NetworkError") ||
-    msg.includes("net::")
+    msg.includes("net::") ||
+    msg.includes("Load failed") ||
+    msg.includes("network error")
   ) {
     return "网络连接异常，请检查网络后重试";
   }

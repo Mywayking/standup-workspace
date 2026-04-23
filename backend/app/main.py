@@ -1,3 +1,4 @@
+import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -10,12 +11,45 @@ from .database import init_db
 from .config import settings
 
 from .routers import projects, scripts, jobs, analysis, export, kb, analyze, feedback, extract_premise, find_angles, joke_to_premise, write
+from .utils.logging import set_request_context, get_request_id
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-)
+class JsonFormatter(logging.Formatter):
+    """输出 JSON 兼容的结构化日志，extra.struct 字段作为顶级 JSON 字段输出。"""
+    def format(self, record):
+        base = {
+            "time": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if hasattr(record, "struct"):
+            base.update(record.struct)
+        return json.dumps(base, ensure_ascii=False)
+
+
+def setup_logging():
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    # Remove default handler
+    for h in root.handlers[:]:
+        root.removeHandler(h)
+    # Console handler with JSON output
+    ch = logging.StreamHandler()
+    ch.setFormatter(JsonFormatter())
+    root.addHandler(ch)
+    # uvicorn access logs -> same format
+    for logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
+        l = logging.getLogger(logger_name)
+        l.setLevel(logging.WARNING)
+        for h in l.handlers[:]:
+            l.removeHandler(h)
+        h = logging.StreamHandler()
+        h.setFormatter(JsonFormatter())
+        l.addHandler(h)
+
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -24,6 +58,8 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
         request.state.request_id = request_id
+        route = f"{request.method} {request.url.path}"
+        set_request_context(request_id, route)
         # 响应头也透传回去
         response: Response = await call_next(request)
         response.headers["x-request-id"] = request_id

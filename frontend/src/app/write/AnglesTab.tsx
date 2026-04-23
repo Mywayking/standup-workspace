@@ -185,7 +185,7 @@ export default function AnglesTab({ onAction, initialData, sourcePath, onClearPe
       let userMsg = "生成失败，请重试";
       if (err.name === "AbortError") {
         userMsg = "请求超时（120秒），请稍后重试";
-      } else if (msg.includes("network") || msg.includes("Failed to fetch") || msg.includes("fetch failed")) {
+      } else if (msg.includes("network") || msg.includes("Failed to fetch") || msg.includes("fetch failed") || msg.includes("Load failed")) {
         userMsg = "网络连接异常，请检查网络后重试";
       } else if (msg.includes("HTTP")) {
         userMsg = msg; // 保留 HTTP 错误信息

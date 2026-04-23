@@ -17,6 +17,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..config import settings
+from ..utils.logging import api_logger, llm_logger, new_request_id, set_request_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["find-angles"])
@@ -260,6 +261,8 @@ async def find_angles_stream(req: dict):
 
     start_time = time.time()
     last_heartbeat = [0.0]
+    request_id = new_request_id("fa")
+    set_request_context(request_id, "find-angles/stream")
 
     async def event_generator():
         import json as _json
@@ -269,13 +272,18 @@ async def find_angles_stream(req: dict):
             elapsed = time.time() - start_time
             if elapsed - last_heartbeat[0] >= 5.0:
                 last_heartbeat[0] = elapsed
+                llm_logger.log_heartbeat("find_angles_stream", int(elapsed * 1000))
                 yield f"event: progress\ndata: " + _json.dumps({
                     "elapsed": int(elapsed),
                     "status": "找角度中...",
+                    "request_id": request_id,
                 }) + "\n\n"
 
-        async def send_error(msg):
-            yield f"event: error\ndata: " + _json.dumps({"error": msg}) + "\n\n"
+        async def send_error(msg, error_code=None):
+            extra = {"error": msg}
+            if error_code:
+                extra["error_code"] = error_code
+            yield f"event: error\ndata: " + _json.dumps({"error": msg, "request_id": request_id}) + "\n\n"
 
         try:
             try:
@@ -296,7 +304,8 @@ async def find_angles_stream(req: dict):
                 ) as resp:
                     if resp.status_code != 200:
                         body = (await resp.aread()).decode()
-                        async for err in send_error("内容正在酝酿中，稍后重试一次~"): yield err
+                        llm_logger.log_done("find_angles_stream", int((time.time() - start_time) * 1000), error_code="UPSTREAM_HTTP", retryable=True)
+                        async for err in send_error("内容正在酝酿中，稍后重试一次~", "UPSTREAM_HTTP"): yield err
                         return
 
                     json_parts = []
@@ -323,16 +332,31 @@ async def find_angles_stream(req: dict):
                         async for hb in send_heartbeat(): yield hb
 
                     full = "".join(json_parts)
+                    duration = int((time.time() - start_time) * 1000)
                     result = _extract_json(full)
                     if result:
+                        llm_logger.log_done("find_angles_stream", duration)
                         yield f"event: done\ndata: " + _json.dumps(result) + "\n\n"
                     else:
-                        async for err in send_error("解析失败，请稍后重试"): yield err
+                        llm_logger.log_done("find_angles_stream", duration, error_code="PARSE_FAILED", retryable=True)
+                        async for err in send_error("解析失败，请稍后重试", "PARSE_FAILED"): yield err
             except httpx.HTTPStatusError as exc:
-                async for err in send_error(_classify_error(exc)): yield err
+                llm_logger.log_done("find_angles_stream", int((time.time() - start_time) * 1000), error_code="UPSTREAM_HTTP", retryable=True)
+                async for err in send_error(_classify_error(exc), "UPSTREAM_HTTP"): yield err
             except Exception as exc:
                 logger.warning(f"[DeepSeek streaming failed: {exc}]")
-                async for err in send_error(_classify_error(exc)): yield err
+                llm_logger.log_done("find_angles_stream", int((time.time() - start_time) * 1000), error_code="STREAM_FAILED", retryable=True)
+                # ── Fallback: try non-stream call ──────────────────────────────
+                yield f"event: progress\ndata: " + _json.dumps({"status": "stream failed, trying fallback...", "request_id": request_id}) + "\n\n"
+                try:
+                    fallback_result = _call_deepseek_sync(user_prompt, deepseek_key)
+                    if "error" not in fallback_result:
+                        llm_logger.log_done("find_angles_stream_fallback", int((time.time() - start_time) * 1000))
+                        yield f"event: done\ndata: " + _json.dumps(fallback_result) + "\n\n"
+                    else:
+                        yield f"event: error\ndata: " + _json.dumps({"error": fallback_result["error"], "request_id": request_id, "error_code": "FALLBACK_FAILED", "retryable": True}) + "\n\n"
+                except Exception as fb_exc:
+                    yield f"event: error\ndata: " + _json.dumps({"error": _classify_error(fb_exc), "request_id": request_id, "error_code": "FALLBACK_EXC", "retryable": True}) + "\n\n"
         finally:
             await client.aclose()
 

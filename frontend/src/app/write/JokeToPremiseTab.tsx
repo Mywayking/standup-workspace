@@ -190,7 +190,7 @@ export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?
       let userMsg = "生成失败，请重试";
       if (err.name === "AbortError") {
         userMsg = "请求超时（180秒），请稍后重试";
-      } else if (msg.includes("network") || msg.includes("Failed to fetch") || msg.includes("fetch failed")) {
+      } else if (msg.includes("network") || msg.includes("Failed to fetch") || msg.includes("fetch failed") || msg.includes("Load failed")) {
         userMsg = "网络连接异常，请检查网络后重试";
       }
       setStream((s) => ({ ...s, phase: "error", error: userMsg }));

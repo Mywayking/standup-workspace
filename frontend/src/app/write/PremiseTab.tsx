@@ -210,7 +210,7 @@ export default function PremiseTab({
       let userMsg = "生成失败，请重试";
       if (err.name === "AbortError") {
         userMsg = "请求超时（120秒），请稍后重试";
-      } else if (msg.includes("network") || msg.includes("Failed to fetch")) {
+      } else if (msg.includes("network") || msg.includes("Failed to fetch") || msg.includes("Load failed")) {
         userMsg = "网络连接异常，请检查网络后重试";
       } else if (msg.includes("HTTP")) {
         userMsg = msg;

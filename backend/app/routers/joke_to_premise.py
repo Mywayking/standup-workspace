@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 import uuid
 from typing import Optional
 
@@ -20,10 +21,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..config import settings
+from ..utils.logging import api_logger, llm_logger, new_request_id, set_request_context, get_request_id
+from ..utils.errors import _classify_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["joke-to-premise"])
-from ..utils.errors import _classify_error
 
 
 
@@ -214,7 +216,8 @@ def _call_llm_sync(system_prompt: str, user_prompt: str) -> dict:
 
 
 async def _stream_joke_to_premise(req: JokeToPremiseRequest):
-    request_id = f"jtp_{uuid.uuid4().hex[:8]}"
+    request_id = new_request_id("jtp")
+    set_request_context(request_id, "joke-to-premise")
     _json = json.dumps
 
     # Build hints
@@ -228,13 +231,31 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
         style_hint=style_hint,
     ).strip()
 
-    yield f"event: progress\ndata: {_json({'phase': 'analyzing', 'message': '正在拆解梗...'})}\n\n"
+    # ── Phase 1: 梗拆解 ───────────────────────────────────────────────────────
+    analysis_user = JOKE_ANALYSIS_USER.format(
+        text=req.text,
+        topic_hint=topic_hint,
+        style_hint=style_hint,
+    ).strip()
 
-    analysis_result = _call_llm_sync(JOKE_ANALYSIS_SYSTEM, analysis_user)
+    yield f"event: progress\ndata: {_json({'phase': 'analyzing', 'message': '正在拆解梗...', 'request_id': request_id})}\n\n"
+
+    llm_logger.log_start("jtp_phase1_analysis", model="deepseek-chat", provider="deepseek")
+    start_phase1 = time.time()
+    try:
+        analysis_result = _call_llm_sync(JOKE_ANALYSIS_SYSTEM, analysis_user)
+    except Exception as exc:
+        duration_phase1 = int((time.time() - start_phase1) * 1000)
+        llm_logger.log_done("jtp_phase1_analysis", duration_phase1, error_code="PHASE1_EXC", retryable=True)
+        yield f"event: error\ndata: {_json({'error': _classify_error(exc), 'request_id': request_id, 'error_code': 'PHASE1_EXC', 'retryable': True})}\n\n"
+        return
+    duration_phase1 = int((time.time() - start_phase1) * 1000)
 
     if analysis_result.get("error"):
-        yield f"event: error\ndata: {_json({'error': analysis_result['error'], 'request_id': request_id})}\n\n"
+        llm_logger.log_done("jtp_phase1_analysis", duration_phase1, error_code="ANALYSIS_FAILED", retryable=True)
+        yield f"event: error\ndata: {_json({'error': analysis_result['error'], 'request_id': request_id, 'error_code': 'ANALYSIS_FAILED', 'retryable': True})}\n\n"
         return
+    llm_logger.log_done("jtp_phase1_analysis", duration_phase1)
 
     # Emit analysis phase
     yield f"event: analysis\ndata: {_json(analysis_result)}\n\n"
@@ -246,9 +267,10 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
         if suggestion:
             yield f"event: warning\ndata: {_json({'message': suggestion, 'input_type': input_type})}\n\n"
 
-    # ── Phase 2: 前提生成 ────────────────────────────────────────────────────
-    yield f"event: progress\ndata: {_json({'phase': 'generating', 'message': '正在生成前提候选...'})}\n\n"
+    # Heartbeat before phase 2
+    yield f"event: progress\ndata: {_json({'phase': 'generating', 'message': '正在生成前提候选...', 'request_id': request_id})}\n\n"
 
+    # ── Phase 2: 前提生成 ────────────────────────────────────────────────────
     premise_user = PREMISE_GENERATION_USER.format(
         text=req.text,
         joke_type=analysis_result.get("joke_type", "unknown"),
@@ -259,11 +281,22 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
         persona=", ".join(analysis_result.get("persona_candidates", [])[:2]),
     )
 
-    premises_result = _call_llm_sync(PREMISE_GENERATION_SYSTEM, premise_user)
+    llm_logger.log_start("jtp_phase2_premise", model="deepseek-chat", provider="deepseek")
+    start_phase2 = time.time()
+    try:
+        premises_result = _call_llm_sync(PREMISE_GENERATION_SYSTEM, premise_user)
+    except Exception as exc:
+        duration_phase2 = int((time.time() - start_phase2) * 1000)
+        llm_logger.log_done("jtp_phase2_premise", duration_phase2, error_code="PHASE2_EXC", retryable=True)
+        yield f"event: error\ndata: {_json({'error': _classify_error(exc), 'request_id': request_id, 'error_code': 'PHASE2_EXC', 'retryable': True})}\n\n"
+        return
+    duration_phase2 = int((time.time() - start_phase2) * 1000)
 
     if isinstance(premises_result, dict) and premises_result.get("error"):
-        yield f"event: error\ndata: {_json({'error': premises_result['error'], 'request_id': request_id})}\n\n"
+        llm_logger.log_done("jtp_phase2_premise", duration_phase2, error_code="PREMISE_FAILED", retryable=True)
+        yield f"event: error\ndata: {_json({'error': premises_result['error'], 'request_id': request_id, 'error_code': 'PREMISE_FAILED', 'retryable': True})}\n\n"
         return
+    llm_logger.log_done("jtp_phase2_premise", duration_phase2)
 
     # Ensure we have a list
     if isinstance(premises_result, dict):
@@ -293,10 +326,12 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
                 "opening_line": p.get("opening_line", ""),
             })
     if not normalized:
-        yield f"event: error\ndata: {_json({'error': '生成前提失败，请重试', 'request_id': request_id})}\n\n"
+        yield f"event: error\ndata: {_json({'error': '生成前提失败，请重试', 'request_id': request_id, 'error_code': 'NORMALIZE_FAILED', 'retryable': True})}\n\n"
         return
 
     # ── Done ──────────────────────────────────────────────────────────────────
+    total_duration = int((time.time() - start_phase1) * 1000)
+    llm_logger.log_done("jtp_total", total_duration)
     final = {
         "request_id": request_id,
         "input_type": input_type,
