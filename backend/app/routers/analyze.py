@@ -18,67 +18,11 @@ from pydantic import BaseModel
 from ..config import settings
 from ..llm import llm_gateway, get_stream_gateway, LLMRequest, LLMMessage
 from ..utils.errors import _classify_error, send_error
+from ..utils.json_repair import parse_llm_json
 from ..utils.logging import new_request_id, set_request_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["analyze"])
-
-
-def _extract_json(text: str):
-    import json
-    import re
-    # Pre-clean: strip control chars (0x00-0x1F except \t\n\r\x0B) that break JSON
-    text = re.sub(r"[\x00-\x08\x0E-\x1F\x7F]", "", text)
-    text = text.strip()
-    # Strategy 1: try direct parse
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    # Strategy 2: strip markdown fences
-    stripped = re.sub(r"```json\s*\n?\s*", "", text)
-    stripped = re.sub(r"```\s*$", "", stripped)
-    stripped = stripped.strip()
-    try:
-        return json.loads(stripped)
-    except json.JSONDecodeError:
-        pass
-    # Strategy 3: find all complete top-level JSON objects and return the LAST one
-    # This handles models that output thinking/thinking blocks before the actual JSON
-    # by finding all balanced {}-blocks and returning the last (which comes after thinking)
-    complete_jsons = []
-    count = 0
-    in_string = False
-    escape = False
-    json_start = -1
-    for i, ch in enumerate(text):
-        if escape:
-            escape = False
-            continue
-        if ch == '\\' and in_string:
-            escape = True
-            continue
-        if ch == '"' and not escape:
-            in_string = not in_string
-            continue
-        if in_string:
-            continue
-        if ch == '{':
-            if count == 0:
-                json_start = i
-            count += 1
-        elif ch == '}':
-            count -= 1
-            if count == 0 and json_start >= 0:
-                try:
-                    complete_jsons.append(json.loads(text[json_start:i+1]))
-                except json.JSONDecodeError:
-                    pass
-                json_start = -1
-    if complete_jsons:
-        # Return the LAST complete JSON (comes after any thinking blocks)
-        return complete_jsons[-1]
-    return None
 
 
 class AnalyzeRequest(BaseModel):
@@ -264,7 +208,7 @@ async def _analyze_all_fast(client: httpx.AsyncClient, text: str, deepseek_key: 
         )
         r.raise_for_status()
         resp_content = r.json()["choices"][0]["message"]["content"]
-        result = _extract_json(resp_content)
+        result = parse_llm_json(resp_content)
         if result:
             return result
         first_brace = resp_content.find('{')
@@ -311,7 +255,7 @@ async def analyze_text(req: AnalyzeRequest):
         if result.error:
             raise HTTPException(500, result.error)
 
-        parsed = _extract_json(result.content)
+        parsed = parse_llm_json(result.content)
         if not parsed:
             raise HTTPException(500, "Parse failed: " + result.content[:200])
 

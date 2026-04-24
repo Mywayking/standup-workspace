@@ -9,6 +9,8 @@ from typing import Optional
 
 import httpx
 
+from ..utils.json_repair import parse_llm_json
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,7 +37,7 @@ def _build_extract_json(system_prompt: str, user_prompt: str, minimax_key: str, 
             r.raise_for_status()
             resp = r.json()["choices"][0]["message"]["content"]
             resp = re.sub(r"<thinking>.*?</thinking>", "", resp, flags=re.DOTALL)
-            result = _extract_json(resp)
+            result = parse_llm_json(resp)
             if result:
                 client.close()
                 return result
@@ -60,7 +62,7 @@ def _build_extract_json(system_prompt: str, user_prompt: str, minimax_key: str, 
             )
             r.raise_for_status()
             resp = r.json()["choices"][0]["message"]["content"]
-            result = _extract_json(resp)
+            result = parse_llm_json(resp)
             if result:
                 client.close()
                 return result
@@ -77,58 +79,3 @@ def _build_extract_json(system_prompt: str, user_prompt: str, minimax_key: str, 
     return {"error": "No LLM API key configured"}
 
 
-def _extract_json(text: str) -> Optional[dict]:
-    """Parse JSON from LLM response text. Handles markdown fences, multiple JSON blocks."""
-    import re as _re
-    # Pre-clean: strip control chars
-    text = _re.sub(r"[\x00-\x08\x0E-\x1F\x7F]", "", text)
-    text = text.strip()
-
-    # Strategy 1: direct parse
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # Strategy 2: strip markdown fences
-    stripped = _re.sub(r"```json\s*\n?\s*", "", text)
-    stripped = _re.sub(r"```\s*$", "", stripped).strip()
-    try:
-        return json.loads(stripped)
-    except json.JSONDecodeError:
-        pass
-
-    # Strategy 3: find all complete top-level JSON objects, return LAST
-    complete_jsons = []
-    count = 0
-    in_string = False
-    escape = False
-    json_start = -1
-    for i, ch in enumerate(text):
-        if escape:
-            escape = False
-            continue
-        if ch == "\\" and in_string:
-            escape = True
-            continue
-        if ch == '"' and not escape:
-            in_string = not in_string
-            continue
-        if in_string:
-            continue
-        if ch == "{":
-            if count == 0:
-                json_start = i
-            count += 1
-        elif ch == "}":
-            count -= 1
-            if count == 0 and json_start >= 0:
-                try:
-                    complete_jsons.append(json.loads(text[json_start:i + 1]))
-                except json.JSONDecodeError:
-                    pass
-                json_start = -1
-
-    if complete_jsons:
-        return complete_jsons[-1]
-    return None

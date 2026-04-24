@@ -1,17 +1,9 @@
 "use client";
-/**
- * useStreamingTask — 统一流式任务状态机 Hook
- *
- * 支持 states: idle | thinking | done | error | cancelled
- * 支持: slowWarning, timeout, abort, retry, meta
- *
- * 适用于 /api/write/*/stream 所有端点，遵循标准 SSE 协议：
- *   event: progress → {type:"progress", phase, message}
- *   event: token    → {type:"token", content} (onEvent receives content string)
- *   event: done     → {type:"done", result, _meta}
- *   event: error    → {type:"error", error, error_code, retryable, _meta}
- *   event: meta     → {type:"meta", selected_model, provider, attempt_count, total_latency_ms, scene, request_id}
- */
+
+// useStreamingTask - unified streaming task state machine hook
+// States: idle | thinking | done | error | cancelled
+// Supports: slowWarning, timeout, abort, retry, meta
+// Works with all /api/write/*/stream endpoints via standard SSE protocol
 import { useCallback, useRef, useState } from "react";
 import { streamPost } from "@/lib/api";
 
@@ -26,21 +18,21 @@ export interface StreamingMeta {
 }
 
 export interface StreamingTaskOptions<T> {
-  /** 流式 token 回调（content 字符串） */
+  /** Token callback - receives content string as tokens arrive */
   onToken?: (token: string) => void;
-  /** 进度/阶段回调 */
+  /** Progress/phase callback */
   onProgress?: (data: { phase?: string; message: string; [key: string]: unknown }) => void;
-  /** 警告回调（非标准，用于旧版 analysis 事件等） */
+  /** Warning callback */
   onWarning?: (data: { message: string; [key: string]: unknown }) => void;
-  /** 元数据回调（模型名/耗时/fallback次数） */
+  /** Metadata callback (model name, latency, fallback count) */
   onMeta?: (meta: StreamingMeta) => void;
-  /** 最终结果回调 */
+  /** Final result callback */
   onDone?: (result: T, meta?: StreamingMeta) => void;
-  /** 错误回调 */
+  /** Error callback */
   onError?: (error: string, errorCode?: string, meta?: StreamingMeta) => void;
-  /** 超时时间 ms，默认 120_000 */
+  /** Timeout in ms, default 120_000 */
   timeoutMs?: number;
-  /** 慢响应警告阈值 ms，默认 30_000 */
+  /** Slow response warning threshold in ms, default 30_000 */
   slowWarningMs?: number;
 }
 
@@ -60,8 +52,8 @@ export interface StreamingTaskResult<T> {
 }
 
 /**
- * Hook 工厂：给定 endpoint，返回 state + actions。
- * body 由 caller 在 start() 时提供。
+ * Hook factory: given an endpoint, returns state + actions.
+ * Body is provided by caller at start() time.
  */
 export function useStreamingTask<T>(
   endpoint: string,
@@ -115,7 +107,6 @@ export function useStreamingTask<T>(
     (body: Record<string, string>) => {
       if (state.phase === "thinking") return;
 
-      // Reset
       clearTimers();
       resultRef.current = null;
       metaRef.current = null;
@@ -131,14 +122,12 @@ export function useStreamingTask<T>(
         tokens: "",
       });
 
-      // Slow warning timer
       slowTimerRef.current = setTimeout(() => {
         setState((s) =>
           s.phase === "thinking" ? { ...s, slowWarning: true } : s
         );
       }, slowWarningMs);
 
-      // Timeout timer
       timeoutTimerRef.current = setTimeout(() => {
         controller.abort();
       }, timeoutMs);
@@ -152,8 +141,8 @@ export function useStreamingTask<T>(
         },
         onEvent: (evt, data) => {
           if (evt === "progress") {
-            const d = data as { phase?: string; message?: string; [key: string]: unknown };
-            onProgress?.({ phase: d.phase, message: d.message || d.status || "" });
+            const d = data as { phase?: string; message?: string; status?: string; [key: string]: unknown };
+            onProgress?.({ phase: d.phase, message: String(d.message ?? d.status ?? "") });
           } else if (evt === "warning") {
             const d = data as { message?: string; [key: string]: unknown };
             onWarning?.({ message: d.message || "" });
@@ -177,24 +166,21 @@ export function useStreamingTask<T>(
               ...s,
               phase: "error",
               slowWarning: false,
-              error: d.error || "未知错误",
+              error: d.error || "Unknown error",
               meta: d._meta ?? null,
             }));
-            onError?.(d.error || "未知错误", d.error_code, d._meta);
+            onError?.(d.error || "Unknown error", d.error_code, d._meta);
           } else if (evt === "meta") {
             const d = data as StreamingMeta;
             metaRef.current = d;
             setState((s) => ({ ...s, meta: d }));
             onMeta?.(d);
-          }
-          // analysis / warning events (old protocol) — treated as done with data
-          else if (evt === "analysis" || evt === "warning") {
-            // For old two-phase protocol (analysis event), treat as progress
+          } else if (evt === "analysis" || evt === "warning") {
             const d = data as { message?: string; [key: string]: unknown };
             if (evt === "warning") {
               onWarning?.({ message: d.message || "" });
             } else {
-              onProgress?.({ phase: "analyzing", message: "正在拆解梗..." });
+              onProgress?.({ phase: "analyzing", message: "Analyzing..." });
             }
           }
         },
@@ -216,9 +202,9 @@ export function useStreamingTask<T>(
             ...s,
             phase: "error",
             slowWarning: false,
-            error: "模型响应超时，请重试或稍后再试",
+            error: "Model response timeout, please retry",
           }));
-          onError?.("模型响应超时，请重试或稍后再试", "TIMEOUT", metaRef.current ?? undefined);
+          onError?.("Model response timeout, please retry", "TIMEOUT", metaRef.current ?? undefined);
         } else if (
           errMsg.includes("network") ||
           errMsg.includes("Failed to fetch") ||
@@ -228,17 +214,17 @@ export function useStreamingTask<T>(
             ...s,
             phase: "error",
             slowWarning: false,
-            error: "网络连接异常，请检查网络后重试",
+            error: "Network error, please check connection",
           }));
-          onError?.("网络连接异常，请检查网络后重试", "NETWORK", metaRef.current ?? undefined);
+          onError?.("Network error, please check connection", "NETWORK", metaRef.current ?? undefined);
         } else {
           setState((s) => ({
             ...s,
             phase: "error",
             slowWarning: false,
-            error: errMsg || "生成失败，请重试",
+            error: errMsg || "Generation failed, please retry",
           }));
-          onError?.(errMsg || "生成失败，请重试", "UNKNOWN", metaRef.current ?? undefined);
+          onError?.(errMsg || "Generation failed, please retry", "UNKNOWN", metaRef.current ?? undefined);
         }
       });
     },
@@ -246,8 +232,6 @@ export function useStreamingTask<T>(
   );
 
   const retry = useCallback(() => {
-    // Retry is not directly supported — caller should store body and call start again
-    // This is a placeholder; actual retry is implemented per-tab with stored body
     setState({
       phase: "idle",
       slowWarning: false,

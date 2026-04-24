@@ -120,11 +120,12 @@ export function streamPost<T extends StreamEvents>(
   opts?: {
     onChunk?: (data: string, event: string) => void;
     onEvent?: (event: string, data: unknown) => void;
+    onToken?: (token: string) => void;
     signal?: AbortSignal;
     timeoutMs?: number;
   }
 ): Promise<void> {
-  const { onChunk, onEvent, signal, timeoutMs = 60_000 } = opts ?? {};
+  const { onChunk, onEvent, onToken, signal, timeoutMs = 60_000 } = opts ?? {};
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -173,9 +174,11 @@ export function streamPost<T extends StreamEvents>(
         try {
           const data = JSON.parse(dataStr);
           // Standardized token format: {"type":"token","content":"..."}
-          // For token events, pass content string to onEvent (not the full object)
+          // For token events, pass content string to both onToken and onEvent
           if (pendingEvent === "token" && typeof data === "object" && data !== null && "type" in data && (data as {type?:string}).type === "token" && "content" in data) {
-            onEvent?.("token", (data as {content: string}).content);
+            const content = (data as {content: string}).content;
+            onToken?.(content);
+            onEvent?.("token", content);
           } else {
             onEvent?.(pendingEvent, data);
           }
