@@ -79,7 +79,7 @@ def _current_user(request: Request, db: Session) -> Optional[User]:
     sid = _get_session_id(request)
     if not sid:
         return None
-    uid = get_user_id_from_session(sid, db)
+    uid = get_user_id_from_session(sid)
     if not uid:
         return None
     return db.query(User).filter(User.id == uid).first()
@@ -117,7 +117,7 @@ def register(req: RegisterReq, response: Response, db: Session = Depends(get_db)
         raise HTTPException(400, err)
 
     # 创建 session
-    session_id = create_session(user.id, db)
+    session_id = create_session(user.id)
     _set_cookie(response, session_id)
 
     # 查找用户的邮箱/手机
@@ -158,7 +158,7 @@ def login(req: LoginReq, response: Response, db: Session = Depends(get_db)):
     if err:
         raise HTTPException(401, err)
 
-    session_id = create_session(user.id, db)
+    session_id = create_session(user.id)
     _set_cookie(response, session_id)
 
     email = db.query(UserAuthMethod).filter(
@@ -187,7 +187,7 @@ def login(req: LoginReq, response: Response, db: Session = Depends(get_db)):
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     sid = _get_session_id(request)
     if sid:
-        delete_session(sid, db)
+        delete_session(sid)
     _clear_cookie(response)
     return {"success": True}
 
