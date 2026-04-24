@@ -352,5 +352,8 @@ async def joke_to_premise(req: JokeToPremiseRequest):
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
+            "X-API-Deprecated": "1",
+            "X-API-Migrate-To": "/api/write/joke-to-premise/stream",
+            "X-API-Removal-Date": "2026-07-01",
         },
     )

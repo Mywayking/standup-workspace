@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .database import init_db
 from .config import settings
 
-from .routers import projects, scripts, jobs, analysis, export, kb, analyze, feedback, extract_premise, find_angles, joke_to_premise, write, auth
+from .routers import projects, scripts, jobs, analysis, export, kb, analyze, feedback, extract_premise, find_angles, joke_to_premise, write, auth, write_stream
 from .utils.logging import set_request_context, get_request_id
 
 
@@ -106,6 +106,7 @@ app.include_router(find_angles.router)
 app.include_router(joke_to_premise.router)
 app.include_router(write.router)
 app.include_router(auth.router)
+app.include_router(write_stream.router)
 
 @app.get("/health")
 def health():

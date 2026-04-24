@@ -260,5 +260,8 @@ async def find_angles_stream(req: dict):
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
+            "X-API-Deprecated": "1",
+            "X-API-Migrate-To": "/api/write/angles/stream",
+            "X-API-Removal-Date": "2026-07-01",
         },
     )

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from datetime import datetime
 
@@ -127,14 +128,25 @@ def stream_job(job_id: int, db: Session = Depends(get_db)):
             try:
                 job = db.query(AnalysisJob).filter(AnalysisJob.id == job_id).first()
                 if not job:
-                    yield f"event: error\ndata: Job not found\n\n"
+                    yield f"event: error\ndata: " + json.dumps({
+                        "type": "error",
+                        "error": "Job not found",
+                    }) + "\n\n"
                     break
 
                 key = f"{job.status}:{job.progress}:{job.message}"
                 if key not in checked or job.status in ("completed", "failed"):
                     payload = (
                         f"event: progress\n"
-                        f"data: {job.status}|{job.step}|{job.step_name}|{job.progress:.3f}|{job.message}|{job.error or ''}\n\n"
+                        f"data: " + json.dumps({
+                            "type": "progress",
+                            "status": job.status,
+                            "step": job.step,
+                            "step_name": job.step_name,
+                            "progress": job.progress,
+                            "message": job.message,
+                            "error": job.error or "",
+                        }) + "\n\n"
                     )
                     yield payload
                     checked.add(key)

@@ -211,5 +211,11 @@ async def extract_premise_stream(req: dict):
             request_id=request_id,
         )),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "X-API-Deprecated": "1",
+            "X-API-Migrate-To": "/api/write/premise/stream",
+            "X-API-Removal-Date": "2026-07-01",
+        },
     )

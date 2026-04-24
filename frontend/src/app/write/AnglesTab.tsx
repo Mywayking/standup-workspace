@@ -1,13 +1,7 @@
 "use client";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useToast } from "@/components/Toast";
-
-interface StreamingState {
-  phase: "idle" | "thinking" | "done" | "error";
-  displayText: string;
-  result: AnglesResult | null;
-  error: string | null;
-}
+import { useStreamingTask, StreamingMeta } from "@/hooks/useStreamingTask";
 
 interface Angle {
   name: string;
@@ -53,15 +47,11 @@ function formatAnglesShare(result: AnglesResult) {
 
 export default function AnglesTab({ onAction, initialData, sourcePath, onClearPending, onResultDone }: { onAction?: (action: string, data?: string, sourcePath?: string[]) => void; initialData?: string; sourcePath?: string[]; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown, sourcePath?: string[]) => void }) {
   const [inputText, setInputText] = useState(initialData ?? "");
-  const [stream, setStream] = useState<StreamingState>({
-    phase: "idle",
-    displayText: "",
-    result: null,
-    error: null,
-  });
-  const abortRef = useRef<AbortController | null>(null);
-  const streamRef = useRef(stream);
-  streamRef.current = stream;
+  const [result, setResult] = useState<AnglesResult | null>(null);
+  const [displayText, setDisplayText] = useState("");
+  const [meta, setMeta] = useState<StreamingMeta | null>(null);
+  const inputTextRef = useRef(inputText);
+  inputTextRef.current = inputText;
 
   // Copy feedback state
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -74,13 +64,24 @@ export default function AnglesTab({ onAction, initialData, sourcePath, onClearPe
   const { toast } = useToast();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const { state, start, abort } = useStreamingTask<AnglesResult>("/api/write/angles/stream", {
+    timeoutMs: 120_000,
+    slowWarningMs: 30_000,
+    onProgress: (data) => {
+      setDisplayText(data.message || "正在分析中…");
+    },
+    onMeta: (m) => setMeta(m),
+    onDone: (r) => {
+      setResult(r);
+    },
+  });
+
   // Auto-trigger analysis when initialData comes from cross-tab navigation
   useEffect(() => {
     if (initialData && !autoTriggered.current) {
       autoTriggered.current = true;
       setInputText(initialData);
       const timer = setTimeout(() => {
-        // Use the textarea ref + form submit instead of DOM query
         const form = textareaRef.current?.closest("form");
         const formSubmit = form?.querySelector('button[type="submit"]') as HTMLButtonElement | null;
         if (formSubmit && !formSubmit.disabled) {
@@ -91,117 +92,29 @@ export default function AnglesTab({ onAction, initialData, sourcePath, onClearPe
     }
   }, [initialData]);
 
-
-
   const canAnalyze = inputText.trim().length >= 5;
 
   const handleRegenerate = useCallback(() => {
-    if (canAnalyze && stream.phase === "done") {
-      setStream({ phase: "idle", displayText: "", result: null, error: null });
-      setTimeout(() => handleAnalyze(), 50);
+    if (canAnalyze && state.phase === "done") {
+      start({ premise: inputTextRef.current.trim() });
     }
-  }, [canAnalyze, stream.phase]);
+  }, [canAnalyze, state.phase, start]);
 
   regenerateRef.current = handleRegenerate;
 
-  const handleAnalyze = useCallback(async () => {
-    if (!canAnalyze || stream.phase === "thinking") return;
+  const handleAnalyze = useCallback(() => {
+    if (!canAnalyze || state.phase === "thinking") return;
+    setDisplayText("");
+    setResult(null);
+    setMeta(null);
+    start({ premise: inputText.trim() });
+  }, [canAnalyze, state.phase, start, inputText]);
 
-    const sid = Math.random().toString(36).slice(2, 10);
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 120_000);
+  const isStreaming = state.phase === "thinking";
+  const hasResult = state.phase === "done" && result;
 
-    setStream({ phase: "thinking", displayText: "", result: null, error: null });
-
-    try {
-      const resp = await fetch(`/api/find-angles/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ premise: inputText.trim() }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (!resp.ok) {
-        const body = await resp.text();
-        setStream((s) => ({ ...s, phase: "error", error: `HTTP ${resp.status}: ${body}` }));
-        return;
-      }
-
-      const reader = resp.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let pendingEvent = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        while (buffer.includes("\n")) {
-          const nl = buffer.indexOf("\n");
-          const line = buffer.slice(0, nl).trim();
-          buffer = buffer.slice(nl + 1);
-
-          if (line.startsWith("event: ")) {
-            pendingEvent = line.slice(7).trim();
-            continue;
-          }
-
-          if (!line.startsWith("data: ")) {
-            if (line === "") {
-              pendingEvent = "";
-            }
-            continue;
-          }
-
-          const dataStr = line.slice(6);
-          const evt = pendingEvent;
-
-          if (evt === "token") {
-            // 不在 UI 展示原始 token
-            continue;
-          } else if (evt === "done") {
-            try {
-              const data = JSON.parse(dataStr);
-              setStream({ phase: "done", displayText: "", result: data, error: null });
-            } catch {
-              setStream((s) => ({ ...s, phase: "error", error: "解析返回数据失败" }));
-            }
-          } else if (evt === "error") {
-            try {
-              const data = JSON.parse(dataStr);
-              setStream((s) => ({ ...s, phase: "error", error: data.error || "未知错误" }));
-            } catch {
-              setStream((s) => ({ ...s, phase: "error", error: "未知错误" }));
-            }
-          }
-        }
-      }
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      const msg = mapUserError(err);
-      let userMsg = "生成失败，请重试";
-      if (err.name === "AbortError") {
-        userMsg = "请求超时（120秒），请稍后重试";
-      } else if (msg.includes("network") || msg.includes("Failed to fetch") || msg.includes("fetch failed") || msg.includes("Load failed")) {
-        userMsg = "网络连接异常，请检查网络后重试";
-      } else if (msg.includes("HTTP")) {
-        userMsg = msg; // 保留 HTTP 错误信息
-      }
-      setStream((s) => ({ ...s, phase: "error", error: userMsg }));
-    } finally {
-      abortRef.current = null;
-    }
-  }, [inputText, canAnalyze, stream.phase]);
-
-  const isStreaming = stream.phase === "thinking";
-  const hasResult = stream.phase === "done" && stream.result;
-
-  const raw = stream.displayText ?? "";
-  const cleaned = raw.replace(/[{}\[\]"":\\]/g, "").replace(/\n/g, " ").replace(/,{2,}/g, " ").replace(/\s{2,}/g, " ").trim();
-  const looksLikeProtocol = /[{}]|\\u[0-9a-fA-F]{4}|"[\w_]+"\s*:/.test(raw);
+  const cleaned = displayText.replace(/[{}\[\]"":\\]/g, "").replace(/\n/g, " ").replace(/,{2,}/g, " ").replace(/\s{2,}/g, " ").trim();
+  const looksLikeProtocol = /[{}]|\\u[0-9a-fA-F]{4}|"[\w_]+"\s*:/.test(displayText);
   const previewText = !cleaned ? "正在为你找角度…" : looksLikeProtocol ? "正在为你找角度…" : cleaned;
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -272,7 +185,7 @@ export default function AnglesTab({ onAction, initialData, sourcePath, onClearPe
         </div>
 
         {/* Streaming */}
-        {stream.phase === "thinking" && (
+        {state.phase === "thinking" && (
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
             <div className="flex items-center gap-3 mb-4">
               <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
@@ -291,17 +204,17 @@ export default function AnglesTab({ onAction, initialData, sourcePath, onClearPe
           </div>
         )}
 
-        {stream.phase === "error" && (
+        {state.phase === "error" && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <p className="text-red-600 text-sm">❌ {stream.error}</p>
-            <button onClick={() => setStream((s) => ({ ...s, phase: "idle" }))} className="mt-2 text-sm text-red-500 hover:text-red-700">
+            <p className="text-red-600 text-sm">❌ {state.error}</p>
+            <button onClick={() => start({ premise: inputTextRef.current.trim() })} className="mt-2 text-sm text-red-500 hover:text-red-700">
               重试
             </button>
           </div>
         )}
 
-        {hasResult && stream.result && (
-          <AnglesResultView result={stream.result} onAction={onAction} sourcePath={sourcePath} copiedId={copiedId} onCopy={(id) => { setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); }} onRegenerate={handleRegenerate} onResultDone={onResultDone} />
+        {hasResult && result && (
+          <AnglesResultView result={result} onAction={onAction} sourcePath={sourcePath} copiedId={copiedId} onCopy={(id) => { setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); }} onRegenerate={handleRegenerate} onResultDone={onResultDone} />
         )}
       </div>
 
@@ -350,7 +263,6 @@ export default function AnglesTab({ onAction, initialData, sourcePath, onClearPe
   );
 }
 
-import { mapUserError } from "@/utils/errorMapper";
 function AnglesResultView({ result, onAction, sourcePath, copiedId, onCopy, onRegenerate, onResultDone }: { result: AnglesResult; onAction?: (action: string, data?: string) => void; sourcePath?: string[]; copiedId: string | null; onCopy: (id: string) => void; onRegenerate?: () => void; onResultDone?: (content: string, rawData: unknown, sourcePath?: string[]) => void }) {
   const [expandedAngle, setExpandedAngle] = useState<number | null>(null);
 

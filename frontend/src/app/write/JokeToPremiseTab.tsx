@@ -1,14 +1,6 @@
 "use client";
 import { useState, useRef, useCallback } from "react";
-
-interface JTPState {
-  phase: "idle" | "thinking" | "done" | "error";
-  analysisPhase: "" | "analyzing" | "generating";
-  displayText: string;
-  analysis: JokeAnalysis | null;
-  premises: PremiseCandidate[];
-  error: string | null;
-}
+import { useStreamingTask, StreamingMeta } from "@/hooks/useStreamingTask";
 
 interface JokeAnalysis {
   input_type: string;
@@ -30,6 +22,16 @@ interface PremiseCandidate {
   persona: string;
   emotion: string;
   opening_line: string;
+}
+
+interface JTPResult {
+  input_type: string;
+  joke_type: string;
+  core_topic: string;
+  core_conflict: string;
+  emotion: string[];
+  premises: PremiseCandidate[];
+  recommendation?: { title: string; reason: string };
 }
 
 function esc(s: unknown): string {
@@ -60,147 +62,64 @@ export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?
   const [inputText, setInputText] = useState("");
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState("");
+  const [result, setResult] = useState<JTPResult | null>(null);
+  const [premises, setPremises] = useState<PremiseCandidate[]>([]);
+  const [displayText, setDisplayText] = useState("");
+  const [meta, setMeta] = useState<StreamingMeta | null>(null);
   const regenerateRef = useRef<() => void>(null);
+  const inputTextRef = useRef(inputText);
+  inputTextRef.current = inputText;
+  const topicRef = useRef(topic);
+  topicRef.current = topic;
+  const styleRef = useRef(style);
+  styleRef.current = style;
 
   const [introDismissed, setIntroDismissed] = useState(() => {
     try { return localStorage.getItem("jtp_intro_dismissed") === "1"; } catch { return false; }
   });
 
-  const [stream, setStream] = useState<JTPState>({
-    phase: "idle",
-    analysisPhase: "",
-    displayText: "",
-    analysis: null,
-    premises: [],
-    error: null,
+  const { state, start, abort } = useStreamingTask<JTPResult>("/api/write/joke-to-premise/stream", {
+    timeoutMs: 60_000,
+    slowWarningMs: 15_000,
+    onProgress: (data) => {
+      setDisplayText(data.message || "正在分析中…");
+    },
+    onMeta: (m) => setMeta(m),
+    onDone: (r) => {
+      setResult(r);
+      setPremises((r.premises ?? []).map((p: any) => ({
+        id: p.id || "p1",
+        title: p.title || "",
+        why_it_works: p.why_it_works || "",
+        setup_direction: p.setup_direction || "",
+        persona: p.persona || "",
+        emotion: p.emotion || "",
+        opening_line: p.opening_line || "",
+      })));
+    },
   });
-  const abortRef = useRef<AbortController | null>(null);
 
   const canGenerate = inputText.trim().length >= 3;
 
   const handleRegenerate = useCallback(() => {
-    if (canGenerate && stream.phase === "done") {
-      setStream({ phase: "idle", analysisPhase: "", displayText: "", analysis: null, premises: [], error: null });
-      setTimeout(() => handleGenerate(), 50);
+    if (canGenerate && state.phase === "done") {
+      start({ text: inputTextRef.current.trim(), ...(topicRef.current ? { topic: topicRef.current } : {}), ...(styleRef.current ? { style: styleRef.current } : {}) });
     }
-  }, [canGenerate, stream.phase]);
+  }, [canGenerate, state.phase, start]);
 
   regenerateRef.current = handleRegenerate;
 
-  const handleGenerate = useCallback(async () => {
-    if (!canGenerate || stream.phase === "thinking") return;
+  const handleGenerate = useCallback(() => {
+    if (!canGenerate || state.phase === "thinking") return;
+    setDisplayText("");
+    setResult(null);
+    setPremises([]);
+    setMeta(null);
+    start({ text: inputText.trim(), ...(topic ? { topic } : {}), ...(style ? { style } : {}) });
+  }, [canGenerate, state.phase, start, inputText, topic, style]);
 
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 60_000);
-
-    setStream({ phase: "thinking", analysisPhase: "analyzing", displayText: "", analysis: null, premises: [], error: null });
-
-    try {
-      const body: Record<string, string> = { text: inputText.trim() };
-      if (topic) body.topic = topic;
-      if (style) body.style = style;
-
-      const resp = await fetch(`/api/joke-to-premise`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!resp.ok) {
-        const text = await resp.text();
-        setStream((s) => ({ ...s, phase: "error", error: `HTTP ${resp.status}: ${text}` }));
-        return;
-      }
-
-      const reader = resp.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let pendingEvent = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        while (buffer.includes("\n")) {
-          const nl = buffer.indexOf("\n");
-          const line = buffer.slice(0, nl).trim();
-          buffer = buffer.slice(nl + 1);
-
-          if (line === "") {
-            pendingEvent = "";
-            continue;
-          }
-
-          if (line.startsWith("event: ")) {
-            pendingEvent = line.slice(7).trim();
-            continue;
-          }
-
-          if (!line.startsWith("data: ")) continue;
-
-          const dataStr = line.slice(6);
-          const evt = pendingEvent;
-
-          if (evt === "progress") {
-            try {
-              const data = JSON.parse(dataStr);
-              const phase = data.phase === "analyzing" ? "analyzing" : "generating";
-              const msg = esc(data.message) || (phase === "analyzing" ? "正在拆解梗..." : "正在生成前提候选...");
-              setStream((s) => ({ ...s, analysisPhase: phase, displayText: msg }));
-            } catch {}
-          } else if (evt === "analysis") {
-            try {
-              const data: JokeAnalysis = JSON.parse(dataStr);
-              setStream((s) => ({ ...s, analysis: data, analysisPhase: "generating" }));
-            } catch {}
-          } else if (evt === "done") {
-            try {
-              const data = JSON.parse(dataStr);
-              const premises: PremiseCandidate[] = (data.premises ?? []).map((p: any) => ({
-                id: p.id || "p1",
-                title: p.title || "",
-                why_it_works: p.why_it_works || "",
-                setup_direction: p.setup_direction || "",
-                persona: p.persona || "",
-                emotion: p.emotion || "",
-                opening_line: p.opening_line || "",
-              }));
-              setStream({ phase: "done", analysisPhase: "", displayText: "", analysis: null, premises, error: null });
-            } catch {
-              setStream((s) => ({ ...s, phase: "error", error: "解析返回数据失败" }));
-            }
-          } else if (evt === "error") {
-            try {
-              const data = JSON.parse(dataStr);
-              setStream((s) => ({ ...s, phase: "error", error: data.error || "未知错误" }));
-            } catch {
-              setStream((s) => ({ ...s, phase: "error", error: "未知错误" }));
-            }
-          }
-        }
-      }
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      const msg = mapUserError(err);
-      let userMsg = "生成失败，请重试";
-      if (err.name === "AbortError") {
-        userMsg = "请求超时（60秒），请稍后重试";
-      } else if (msg.includes("network") || msg.includes("Failed to fetch") || msg.includes("fetch failed") || msg.includes("Load failed")) {
-        userMsg = "网络连接异常，请检查网络后重试";
-      }
-      setStream((s) => ({ ...s, phase: "error", error: userMsg }));
-    } finally {
-      abortRef.current = null;
-    }
-  }, [inputText, canGenerate, stream.phase, topic, style]);
-
-  const isStreaming = stream.phase === "thinking";
-  const hasResult = stream.phase === "done" && stream.premises.length > 0;
+  const isStreaming = state.phase === "thinking";
+  const hasResult = state.phase === "done" && premises.length > 0;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -292,33 +211,14 @@ export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?
         </div>
 
         {/* Streaming state */}
-        {stream.phase === "thinking" && (
+        {state.phase === "thinking" && (
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
             <div className="flex items-center gap-3 mb-4">
               <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
               <span className="text-sm font-semibold text-gray-700">
-                {stream.analysisPhase === "analyzing" ? "正在拆解梗..." : "正在生成前提候选..."}
+                正在分析中…
               </span>
             </div>
-            {/* Analysis preview */}
-            {stream.analysis && (
-              <div className="bg-gray-50 rounded-xl p-4 mb-3">
-                <div className="flex flex-wrap gap-2 mb-2">
-                  <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
-                    {esc(stream.analysis.joke_type)}
-                  </span>
-                  <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">
-                    {esc(stream.analysis.input_type)}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600 mb-1">
-                  <span className="font-medium text-gray-800">核心冲突：</span>{esc(stream.analysis.core_conflict)}
-                </p>
-                <p className="text-sm text-gray-500 text-xs">
-                  情绪：{stream.analysis.emotion?.join("、")}
-                </p>
-              </div>
-            )}
             <div className="bg-gray-50 rounded-xl p-4 min-h-[60px]">
               <div className="space-y-2">
                 <div className="h-3 bg-gray-200 rounded animate-pulse w-full" />
@@ -329,11 +229,11 @@ export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?
         )}
 
         {/* Error state */}
-        {stream.phase === "error" && (
+        {state.phase === "error" && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <p className="text-red-600 text-sm">❌ {stream.error}</p>
+            <p className="text-red-600 text-sm">❌ {state.error}</p>
             <button
-              onClick={() => setStream((s) => ({ ...s, phase: "idle" }))}
+              onClick={() => start({ text: inputTextRef.current.trim(), ...(topicRef.current ? { topic: topicRef.current } : {}), ...(styleRef.current ? { style: styleRef.current } : {}) })}
               className="mt-2 text-sm text-red-500 hover:text-red-700"
             >
               重试
@@ -343,7 +243,7 @@ export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?
 
         {/* Done: show premise cards */}
         {hasResult && (
-          <JTPResultView premises={stream.premises} onAction={onAction} onRegenerate={handleRegenerate} onResultDone={onResultDone} />
+          <JTPResultView premises={premises} onAction={onAction} onRegenerate={handleRegenerate} onResultDone={onResultDone} />
         )}
       </div>
 
@@ -395,7 +295,6 @@ export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?
 
 // ─── Result View ────────────────────────────────────────────────────────────────
 
-import { mapUserError } from "@/utils/errorMapper";
 function JTPResultView({ premises, onAction, onRegenerate, onResultDone }: { premises: PremiseCandidate[]; onAction?: (action: string, data?: string) => void; onRegenerate?: () => void; onResultDone?: (content: string, rawData: unknown) => void }) {
   return (
     <div className="space-y-4">

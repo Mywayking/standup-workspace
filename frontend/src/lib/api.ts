@@ -97,10 +97,10 @@ export const exportApi = {
 // ─── Write / Comedy Tools ────────────────────────────────────────────────────
 
 export interface StreamEvents {
-  done: unknown;
-  error: { error: string; _meta?: Record<string, unknown> };
-  progress: { status: string; model?: string; attempt?: number };
-  meta?: { selected_model: string; total_latency_ms: number; attempt_count: number };
+  done: { type: "done"; result: unknown; _meta?: Record<string, unknown> };
+  error: { type: "error"; error: string; error_code?: string; retryable?: boolean; _meta?: Record<string, unknown> };
+  progress: { type: "progress"; phase?: string; message: string; status?: string; model?: string; attempt?: number };
+  meta: { type: "meta"; selected_model: string; provider?: string; request_id?: string; attempt_count: number; total_latency_ms: number; scene?: string };
   token: string;
   [key: string]: unknown;
 }
@@ -172,12 +172,18 @@ export function streamPost<T extends StreamEvents>(
         onChunk?.(dataStr, pendingEvent);
         try {
           const data = JSON.parse(dataStr);
-          onEvent?.(pendingEvent, data);
+          // Standardized token format: {"type":"token","content":"..."}
+          // For token events, pass content string to onEvent (not the full object)
+          if (pendingEvent === "token" && typeof data === "object" && data !== null && "type" in data && (data as {type?:string}).type === "token" && "content" in data) {
+            onEvent?.("token", (data as {content: string}).content);
+          } else {
+            onEvent?.(pendingEvent, data);
+          }
           // Track if we got a terminal event
           if (pendingEvent === "done" || pendingEvent === "error") {
             gotFinalEvent = true;
           }
-        } catch { /* 非 JSON 数据 */ }
+        } catch { /* 非 JSON 数据，onEvent 已在上面通过 onChunk 处理 */ }
       }
     }
 
@@ -191,21 +197,21 @@ export function streamPost<T extends StreamEvents>(
 }
 
 export const writeApi = {
-  /** 提炼前提（流式） */
+  /** 提炼前提（流式）— 新统一端点 */
   extractPremise: (text: string, opts?: Parameters<typeof streamPost>[2]) =>
-    streamPost("/api/extract-premise/stream", { text }, opts),
+    streamPost("/api/write/premise/stream", { text }, opts),
 
-  /** 梗写前提（流式） */
+  /** 梗写前提（流式）— 新统一端点 */
   jokeToPremise: (text: string, topic?: string, style?: string, opts?: Parameters<typeof streamPost>[2]) =>
-    streamPost("/api/joke-to-premise", { text, ...(topic ? { topic } : {}), ...(style ? { style } : {}) }, opts),
+    streamPost("/api/write/joke-to-premise/stream", { text, ...(topic ? { topic } : {}), ...(style ? { style } : {}) }, opts),
 
-  /** 找角度（流式） */
+  /** 找角度（流式）— 新统一端点 */
   findAngles: (premise: string, opts?: Parameters<typeof streamPost>[2]) =>
-    streamPost("/api/find-angles/stream", { premise }, opts),
+    streamPost("/api/write/angles/stream", { premise }, opts),
 
-  /** 改稿分析（流式） */
+  /** 改稿分析（流式）— 新统一端点 */
   analyze: (text: string, opts?: Parameters<typeof streamPost>[2]) =>
-    streamPost("/api/analyze/stream", { text }, opts),
+    streamPost("/api/write/rewrite/stream", { text }, opts),
 };
 
 // ─── Auth API ─────────────────────────────────────────────────────────────────

@@ -373,7 +373,13 @@ async def analyze_stream(req: AnalyzeRequest):
             request_id=request_id,
         )),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "X-API-Deprecated": "1",
+            "X-API-Migrate-To": "/api/write/rewrite/stream",
+            "X-API-Removal-Date": "2026-07-01",
+        },
     )
 
 

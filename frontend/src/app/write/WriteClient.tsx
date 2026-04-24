@@ -874,7 +874,7 @@ export default function WritePage({ initialText, sourcePath, onClearPending, onR
     const timeoutId = setTimeout(() => controller.abort(), 90_000);
 
     try {
-      const resp = await fetch(`${BASE}/api/analyze/stream`, {
+      const resp = await fetch(`${BASE}/api/write/rewrite/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: inputText, mode: "quick", session_id: sid }),
@@ -918,8 +918,18 @@ export default function WritePage({ initialText, sourcePath, onClearPending, onR
           }
 
           if (eventType === "token" && eventData) {
+            // New format: {"type":"token","content":"..."} OR old raw string
+            let tokenContent = eventData;
+            try {
+              const parsed = JSON.parse(eventData);
+              if (parsed && parsed.type === "token" && typeof parsed.content === "string") {
+                tokenContent = parsed.content;
+              }
+            } catch {
+              // Not JSON — treat as raw token string (backward compat)
+            }
             // Unescape SSE data: the server sends JSON with \\n (escaped backslash-n)
-            const unescaped = eventData
+            const unescaped = tokenContent
               .replace(/\\\\n/g, "\n")
               .replace(/\\\\r/g, "\r")
               .replace(/\\\\t/g, "\t");
@@ -932,17 +942,20 @@ export default function WritePage({ initialText, sourcePath, onClearPending, onR
           } else if (eventType === "done" && eventData) {
             // Clean control chars before parse (defensive)
             // Try to parse; if fails, extract JSON from raw string
-            let final: any = null;
+            // New format: {"type":"done","result":{...},"_meta":{...}}
+            let raw: any = null;
             try {
-              final = JSON.parse(eventData);
+              raw = JSON.parse(eventData);
             } catch {
               // Try extracting last complete JSON object
               const first = eventData.indexOf("{");
               const last = eventData.lastIndexOf("}");
               if (first >= 0 && last > first) {
-                try { final = JSON.parse(eventData.slice(first, last + 1)); } catch { /* skip */ }
+                try { raw = JSON.parse(eventData.slice(first, last + 1)); } catch { /* skip */ }
               }
             }
+            // Support both new format (final.result) and old format (final directly)
+            const final = raw?.result ?? raw;
             if (!final) {
               // Show accumulated tokens as fallback display
               const fallback = stream.rawTokens || eventData;

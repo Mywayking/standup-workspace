@@ -52,6 +52,7 @@ class StreamGateway:
         models = self._stream_models(request)
         attempts: list[ModelAttempt] = []
         start_time = time.time()
+        total_deadline = start_time + settings.llm_total_timeout_seconds
         request_id = request.request_id or "unknown"
         scene = request.scene
         messages = [{"role": m.role, "content": m.content} for m in request.messages]
@@ -64,6 +65,28 @@ class StreamGateway:
         )
 
         for i, model in enumerate(models):
+            # Enforce total timeout across all model attempts
+            if time.time() >= total_deadline:
+                total_latency = int((time.time() - start_time) * 1000)
+                llm_logger.log_done(
+                    f"stream_gateway_{scene}",
+                    total_latency,
+                    error_code="TOTAL_TIMEOUT",
+                    retryable=True,
+                )
+                yield f"event: error\ndata: " + json.dumps({
+                    "type": "error",
+                    "error": "总超时时间已到，所有模型均未完成",
+                    "error_code": "TOTAL_TIMEOUT",
+                    "retryable": True,
+                    "_meta": {
+                        "provider": "multi",
+                        "model": models[-1] if models else "unknown",
+                        "total_latency_ms": total_latency,
+                    },
+                }) + "\n\n"
+                return
+
             attempt_start = time.time()
             model_provider = self.provider.get_provider_name(model)
             token_buffer: list[str] = []
@@ -89,7 +112,8 @@ class StreamGateway:
                 ))
                 llm_logger.log_done(f"stream_gateway_{scene}", total_latency)
                 yield f"event: done\ndata: " + json.dumps({
-                    **result_dict,
+                    "type": "done",
+                    "result": result_dict,
                     "_meta": {
                         "provider": model_provider,
                         "model": model,
@@ -97,13 +121,17 @@ class StreamGateway:
                         "total_latency_ms": total_latency,
                         "attempt": i + 1,
                         "mode": "stream",
+                        "scene": scene,
                     },
                 }) + "\n\n"
                 yield f"event: meta\ndata: " + json.dumps({
+                    "type": "meta",
                     "selected_model": model,
+                    "provider": model_provider,
                     "request_id": request_id,
                     "attempt_count": i + 1,
                     "total_latency_ms": total_latency,
+                    "scene": scene,
                 }) + "\n\n"
                 return
 
@@ -124,7 +152,10 @@ class StreamGateway:
                     ))
                     total_latency = int((time.time() - start_time) * 1000)
                     yield f"event: error\ndata: " + json.dumps({
+                        "type": "error",
                         "error": f"模型请求失败：HTTP {e.code}",
+                        "error_code": str(e.code) if e.code else "HTTP_ERROR",
+                        "retryable": False,
                         "_meta": {
                             "provider": model_provider, "model": model,
                             "latency_ms": latency_ms, "total_latency_ms": total_latency,
@@ -144,7 +175,9 @@ class StreamGateway:
                     ))
                     try:
                         yield f"event: progress\ndata: " + json.dumps({
-                            "status": f"stream failed, trying non-stream ({model})...",
+                            "type": "progress",
+                            "phase": "fallback",
+                            "message": f"stream failed, trying non-stream ({model})...",
                             "model": model, "attempt": i + 1, "request_id": request_id,
                         }) + "\n\n"
                         result_content, result_latency = await self._call_non_stream(
@@ -156,17 +189,22 @@ class StreamGateway:
                         ))
                         llm_logger.log_done(f"stream_gateway_{scene}", total_latency)
                         yield f"event: done\ndata: " + json.dumps({
-                            **result_content,
+                            "type": "done",
+                            "result": result_content,
                             "_meta": {
                                 "provider": model_provider, "model": model,
                                 "latency_ms": result_latency, "total_latency_ms": total_latency,
                                 "attempt": i + 1, "fallback": "non-stream",
+                                "scene": scene,
                             },
                         }) + "\n\n"
                         yield f"event: meta\ndata: " + json.dumps({
+                            "type": "meta",
                             "selected_model": model,
+                            "provider": model_provider,
                             "request_id": request_id, "attempt_count": i + 1,
                             "total_latency_ms": total_latency,
+                            "scene": scene,
                         }) + "\n\n"
                         return
                     except Exception as non_stream_err:
@@ -180,7 +218,10 @@ class StreamGateway:
                         ))
                         total_latency = int((time.time() - start_time) * 1000)
                         yield f"event: error\ndata: " + json.dumps({
+                            "type": "error",
                             "error": f"模型 {model} 调用失败：{ns_err_str[:100]}",
+                            "error_code": "NON_STREAM_FAILED",
+                            "retryable": True,
                             "_meta": {
                                 "provider": model_provider, "model": model,
                                 "latency_ms": ns_latency_ms, "total_latency_ms": total_latency,
@@ -195,7 +236,10 @@ class StreamGateway:
                     ))
                     total_latency = int((time.time() - start_time) * 1000)
                     yield f"event: error\ndata: " + json.dumps({
+                        "type": "error",
                         "error": f"未知错误：{error_str[:100]}",
+                        "error_code": "UNKNOWN",
+                        "retryable": True,
                         "_meta": {
                             "provider": model_provider, "model": model,
                             "latency_ms": latency_ms, "total_latency_ms": total_latency,
@@ -208,8 +252,10 @@ class StreamGateway:
         total_latency = int((time.time() - start_time) * 1000)
         llm_logger.log_done(f"stream_gateway_{scene}", total_latency, error_code="ALL_FAILED", retryable=True)
         yield f"event: error\ndata: " + json.dumps({
+            "type": "error",
             "error": "所有模型均失败，请稍后重试",
-            "request_id": request_id, "error_code": "ALL_FAILED", "retryable": True,
+            "error_code": "ALL_FAILED",
+            "retryable": True,
             "_meta": {
                 "provider": "multi", "model": models[-1] if models else "unknown",
                 "total_latency_ms": total_latency,
@@ -254,7 +300,10 @@ class StreamGateway:
                             model_provider, model, resp.status_code, body,
                         )
                         yield f"event: error\ndata: " + json.dumps({
+                            "type": "error",
                             "error": f"模型请求失败：HTTP {resp.status_code}",
+                            "error_code": str(resp.status_code),
+                            "retryable": True,
                             "_meta": {"provider": model_provider, "model": model},
                         }) + "\n\n"
                         # Signal caller to try next model
@@ -276,7 +325,7 @@ class StreamGateway:
                                     .replace("\\", "\\\\")
                                     .replace("\n", "\\n")
                                     .replace("\r", "\\r"))
-                                yield f"event: token\ndata: " + safe + "\n\n"
+                                yield f"event: token\ndata: " + json.dumps({"type": "token", "content": token}) + "\n\n"
                         except Exception:
                             pass
 
@@ -284,7 +333,10 @@ class StreamGateway:
             model_provider = self.provider.get_provider_name(model)
             logger.warning("[_stream_one] provider=%s model=%s timeout", model_provider, model)
             yield f"event: error\ndata: " + json.dumps({
+                "type": "error",
                 "error": "模型响应超时，请重试或稍后再试",
+                "error_code": "TIMEOUT",
+                "retryable": True,
                 "_meta": {"provider": model_provider, "model": model},
             }) + "\n\n"
             raise LLMTimeoutError(f"Stream timeout for model {model}") from e
