@@ -1,10 +1,18 @@
 {
   "name": "standup-workspace",
   "version": "1.0.0",
-  "description": "**定位**：脱口秀/单口喜剧拉片分析系统 — 核心是\"原文—结构—态度—技巧—问题判断—启发\"五联动分析。",
+  "description": "脱口秀/单口喜剧拉片分析系统 — 核心是\"原文—结构—态度—技巧—问题判断—启发\"五联动分析。",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && uvicorn app.main:app --reload --port 8000",
+    "build:frontend": "cd frontend && npm run build",
+    "typecheck": "cd frontend && npx tsc --noEmit",
+    "lint": "cd frontend && npx eslint . --ext .ts,.tsx || true",
+    "test:e2e": "npx playwright test",
+    "test:e2e:webkit": "npx playwright test --project=webkit",
+    "test:e2e:mobile": "npx playwright test --project=\"Mobile Safari\" --project=\"Mobile Chrome\"",
+    "test:e2e:chromium": "npx playwright test --project=chromium"
   },
   "keywords": [],
   "author": "",

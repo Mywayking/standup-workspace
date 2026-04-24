@@ -21,58 +21,11 @@ from ..config import settings
 from ..utils.logging import api_logger, llm_logger, new_request_id, set_request_context
 from ..utils.errors import _classify_error
 from ..llm import LLMGateway, llm_gateway, get_stream_gateway, LLMRequest, LLMMessage
+from ..utils.json_repair import parse_llm_json
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["find-angles"])
-
-
-def _extract_json(text: str):
-    """解析 JSON（保留，供内部用）"""
-    text = re.sub(r"[\x00-\x08\x0E-\x1F\x7F]", "", text)
-    text = text.strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    stripped = re.sub(r"```json\s*\n?\s*", "", text)
-    stripped = re.sub(r"```\s*$", "", stripped).strip()
-    try:
-        return json.loads(stripped)
-    except json.JSONDecodeError:
-        pass
-    complete_jsons = []
-    count = 0
-    in_string = False
-    escape = False
-    json_start = -1
-    for i, ch in enumerate(text):
-        if escape:
-            escape = False
-            continue
-        if ch == '\\' and in_string:
-            escape = True
-            continue
-        if ch == '"' and not escape:
-            in_string = not in_string
-            continue
-        if in_string:
-            continue
-        if ch == '{':
-            if count == 0:
-                json_start = i
-            count += 1
-        elif ch == '}':
-            count -= 1
-            if count == 0 and json_start >= 0:
-                try:
-                    complete_jsons.append(json.loads(text[json_start:i+1]))
-                except json.JSONDecodeError:
-                    pass
-                json_start = -1
-    if complete_jsons:
-        return complete_jsons[-1]
-    return None
 
 
 SYSTEM_PROMPT = """
@@ -223,7 +176,7 @@ async def find_angles(req: dict):
         raise HTTPException(500, result.error)
 
     # Parse the JSON content
-    parsed = _extract_json(result.content)
+    parsed = parse_llm_json(result.content)
     if not parsed:
         raise HTTPException(500, "返回格式解析失败，请稍后重试")
 

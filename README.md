@@ -17,7 +17,7 @@
 |----|------|
 | 前端 | Next.js 15 + TypeScript + Tailwind CSS + Zustand + TanStack Query |
 | 后端 | FastAPI + Uvicorn + Redis + PostgreSQL + S3 |
-| 分析 | MiniMax API (mmx CLI) |
+| 分析 | TokenHub 多模型自动回退（DeepSeek / MiniMax / Kimi / GLM） |
 
 ## 快速启动（2026-04-15 完整版）
 
@@ -69,11 +69,31 @@ npm run dev
 python3 --version
 # Node.js 22+
 node --version
-# mmx CLI（用于调用 MiniMax API）
-mmx --version
+# Playwright（用于 E2E 测试）
+npx playwright --version
 ```
 
 ## API 核心接口
+
+### /write 流式接口（推荐）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/write/premise/stream` | 提炼前提（流式） |
+| POST | `/api/write/joke-to-premise/stream` | 梗写前提（流式） |
+| POST | `/api/write/angles/stream` | 找角度（流式） |
+| POST | `/api/write/rewrite/stream` | 改稿分析（流式） |
+
+### 旧接口（已标记 deprecated，2026-07-01 移除）
+
+| 方法 | 路径 | 迁移至 |
+|------|------|--------|
+| POST | `/api/extract-premise/stream` | `/api/write/premise/stream` |
+| POST | `/api/joke-to-premise` | `/api/write/joke-to-premise/stream` |
+| POST | `/api/find-angles/stream` | `/api/write/angles/stream` |
+| POST | `/api/analyze/stream` | `/api/write/rewrite/stream` |
+
+### 项目管理接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -140,14 +160,24 @@ projects → scripts → segments → segment_analysis
 
 ## 开发说明
 
-### MiniMax API
+### LLM 多模型回退
 
-分析调用 MiniMax API，`mmx` CLI 已配置。环境变量：
+`/write` 页面调用 TokenHub 多模型自动回退网关（`backend/app/llm/`），支持：
+
+- DeepSeek (`deepseek-chat`)
+- MiniMax (`minimax-m2.7`)
+- Kimi (`kimi-k2.6`)
+- GLM (`glm-5`)
+
+环境变量（通过 `backend/.env` 配置）：
 
 ```
-MINIMAX_API_KEY=your_key
-MINIMAX_BASE_URL=https://api.minimax.chat
+TOKENHUB_API_KEY=your_key       # TokenHub 统一入口
+DEEPSEEK_API_KEY=your_key       # 直接调用（可选）
+MINIMAX_API_KEY=your_key        # 直接调用（可选）
 ```
+
+流式 SSE 协议：所有 `/api/write/*/stream` 端点统一返回 JSON 事件，详见 `docs/API_CONTRACT.md`。
 
 ### Redis SSE
 
@@ -180,25 +210,34 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 standup-workspace/
 ├── README.md
+├── docs/
+│   └── API_CONTRACT.md           # SSE 协议文档
 ├── backend/
 │   ├── requirements.txt
 │   ├── .env.example
 │   └── app/
 │       ├── main.py
-│       ├── config.py
+│       ├── config.py              # LLM 配置 + 验证
 │       ├── database.py
 │       ├── models.py
 │       ├── schemas.py
+│       ├── llm/
+│       │   ├── __init__.py        # Gateway / StreamGateway 统一导出
+│       │   ├── gateway.py         # 非流式多模型回退
+│       │   └── stream_gateway.py  # 流式 SSE 多模型回退
 │       ├── routers/
 │       │   ├── projects.py
 │       │   ├── scripts.py
 │       │   ├── jobs.py
-│       │   ├── analysis.py
-│       │   └── export.py
-│       └── services/
-│           ├── analyzer.py
-│           ├── segmenter.py
-│           └── mmx_client.py
+│       │   ├── extract_premise.py
+│       │   ├── find_angles.py
+│       │   ├── joke_to_premise.py
+│       │   ├── analyze.py
+│       │   └── write_stream.py     # /api/write/* 统一流式端点
+│       └── utils/
+│           ├── logging.py          # 结构化日志 + request_id
+│           ├── errors.py          # 错误分类
+│           └── json_repair.py      # 公共 JSON 解析
 └── frontend/
     ├── package.json
     ├── next.config.ts
@@ -206,29 +245,16 @@ standup-workspace/
     └── src/
         ├── app/layout.tsx
         ├── app/page.tsx
-        ├── components/
-        │   ├── layout/
-        │   │   ├── Toolbar.tsx
-        │   │   ├── LeftPanel.tsx
-        │   │   ├── CenterPanel.tsx
-        │   │   ├── RightPanel.tsx
-        │   │   └── BottomTabs.tsx
-        │   ├── analysis/
-        │   │   ├── SegmentCard.tsx
-        │   │   ├── TagBadge.tsx
-        │   │   └── AnalysisResult.tsx
-        │   └── ui/
-        │       ├── Button.tsx
-        │       ├── Input.tsx
-        │       └── Modal.tsx
+        ├── app/write/              # /write 页面（4个Tab）
+        │   ├── WriteClient.tsx
+        │   ├── PremiseTab.tsx
+        │   ├── AnglesTab.tsx
+        │   ├── JokeToPremiseTab.tsx
+        │   └── RewriteTab.tsx
+        ├── hooks/
+        │   └── useStreamingTask.ts  # 统一流式状态机 Hook
         ├── lib/
         │   └── api.ts
-        ├── hooks/
-        │   ├── useProjects.ts
-        │   ├── useAnalysis.ts
-        │   └── useSSE.ts
-        ├── stores/
-        │   └── workspaceStore.ts
         └── types/
             └── index.ts
 ```

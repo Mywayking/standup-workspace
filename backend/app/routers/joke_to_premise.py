@@ -21,6 +21,7 @@ from ..config import settings
 from ..utils.logging import api_logger, llm_logger, new_request_id, set_request_context, get_request_id
 from ..utils.errors import _classify_error
 from ..llm import llm_gateway, LLMRequest, LLMMessage
+from ..utils.json_repair import parse_llm_json
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["joke-to-premise"])
@@ -121,55 +122,6 @@ PREMISE_GENERATION_USER = """梗：{text}
 生成3-5条差异化前提候选。"""
 
 
-# ─── JSON Extraction ──────────────────────────────────────────────────────────
-
-
-def _extract_json(text: str):
-    text = re.sub(r"[\x00-\x08\x0E-\x1F\x7F]", "", text)
-    text = text.strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    stripped = re.sub(r"```json\s*\n?\s*", "", text)
-    stripped = re.sub(r"```\s*$", "", stripped).strip()
-    try:
-        return json.loads(stripped)
-    except json.JSONDecodeError:
-        pass
-    complete_jsons = []
-    count = 0
-    in_string = False
-    escape = False
-    json_start = -1
-    for i, ch in enumerate(text):
-        if escape:
-            escape = False
-            continue
-        if ch == "\\" and in_string:
-            escape = True
-            continue
-        if ch == '"' and not escape:
-            in_string = not in_string
-        if in_string:
-            continue
-        if ch == "{":
-            if count == 0:
-                json_start = i
-            count += 1
-        elif ch == "}":
-            count -= 1
-            if count == 0 and json_start >= 0:
-                try:
-                    complete_jsons.append(json.loads(text[json_start : i + 1]))
-                except json.JSONDecodeError:
-                    pass
-                json_start = -1
-    if complete_jsons:
-        return complete_jsons[-1]
-    return None
-
-
 # ─── Stream Generator ─────────────────────────────────────────────────────────
 
 
@@ -210,7 +162,7 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
             llm_logger.log_done("jtp_phase1_analysis", duration_phase1, error_code="ANALYSIS_FAILED", retryable=True)
             yield f"event: error\ndata: {_json({'error': analysis_result_raw.error, 'request_id': request_id, 'error_code': 'ANALYSIS_FAILED', 'retryable': True, 'selected_model': analysis_result_raw.selected_model, 'attempt_count': analysis_result_raw.attempt_count})}\n\n"
             return
-        analysis_result = _extract_json(analysis_result_raw.content)
+        analysis_result = parse_llm_json(analysis_result_raw.content)
         if not analysis_result:
             duration_phase1 = int((time.time() - start_phase1) * 1000)
             llm_logger.log_done("jtp_phase1_analysis", duration_phase1, error_code="PARSE_FAILED", retryable=True)
@@ -269,7 +221,7 @@ async def _stream_joke_to_premise(req: JokeToPremiseRequest):
             yield f"event: error\ndata: {_json({'error': premises_result_raw.error, 'request_id': request_id, 'error_code': 'PREMISE_FAILED', 'retryable': True, 'selected_model': premises_result_raw.selected_model, 'attempt_count': premises_result_raw.attempt_count})}\n\n"
             return
 
-        premises_result = _extract_json(premises_result_raw.content)
+        premises_result = parse_llm_json(premises_result_raw.content)
         if not premises_result:
             duration_phase2 = int((time.time() - start_phase2) * 1000)
             llm_logger.log_done("jtp_phase2_premise", duration_phase2, error_code="PARSE_FAILED", retryable=True)
