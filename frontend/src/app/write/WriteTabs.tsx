@@ -119,9 +119,9 @@ function WriteTabsInner() {
       {/* Main Flow Guidance */}
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 py-2.5">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide">
             <span className="text-xs text-gray-400 shrink-0">推荐流程：</span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 shrink-0">
               {STEPS.map((step, idx) => {
                 const isActive = idx === activeStep;
                 const isPast = idx < activeStep;
@@ -143,7 +143,7 @@ function WriteTabsInner() {
               })}
             </div>
             {activeTab !== "joke_to_premise" && (
-              <span className="text-xs text-gray-400">| 已有一句梗？试试「梗写前提」</span>
+              <span className="text-xs text-gray-400 shrink-0 hidden sm:inline">| 已有一句梗？试试「梗写前提」</span>
             )}
           </div>
         </div>
@@ -152,7 +152,7 @@ function WriteTabsInner() {
       {/* Tab Bar */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex gap-1">
+          <div className="flex gap-1 overflow-x-auto scrollbar-hide">
             {([
               { key: "premise", label: "提炼前提", desc: "素材 → 前提" },
               { key: "joke_to_premise", label: "梗写前提", desc: "梗 → 前提" },
@@ -183,9 +183,9 @@ function WriteTabsInner() {
 
       {/* Main Content: [Session Panel | Tab Content] */}
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex gap-6">
-          {/* Left: Session Panel */}
-          <div className="w-72 shrink-0">
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Left: Session Panel — hidden on mobile, shown as toggle on lg+ */}
+          <div className="hidden lg:block w-72 shrink-0">
             <WorkflowSessionPanel />
           </div>
 

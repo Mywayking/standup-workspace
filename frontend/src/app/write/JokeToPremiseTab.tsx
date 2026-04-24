@@ -92,7 +92,7 @@ export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?
 
     const controller = new AbortController();
     abortRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 180_000);
+    const timeoutId = setTimeout(() => controller.abort(), 60_000);
 
     setStream({ phase: "thinking", analysisPhase: "analyzing", displayText: "", analysis: null, premises: [], error: null });
 
@@ -189,7 +189,7 @@ export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?
       const msg = mapUserError(err);
       let userMsg = "生成失败，请重试";
       if (err.name === "AbortError") {
-        userMsg = "请求超时（180秒），请稍后重试";
+        userMsg = "请求超时（60秒），请稍后重试";
       } else if (msg.includes("network") || msg.includes("Failed to fetch") || msg.includes("fetch failed") || msg.includes("Load failed")) {
         userMsg = "网络连接异常，请检查网络后重试";
       }

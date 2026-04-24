@@ -17,3 +17,12 @@
 .animate-toast-in {
   animation: toast-in 0.2s ease-out forwards;
 }
+
+/* Scrollbar hide utility */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
