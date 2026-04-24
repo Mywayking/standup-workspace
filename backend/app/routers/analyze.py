@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..config import settings
-from ..llm import llm_gateway, StreamGateway, LLMRequest, LLMMessage
+from ..llm import llm_gateway, get_stream_gateway, LLMRequest, LLMMessage
 from ..utils.errors import _classify_error, send_error
 from ..utils.logging import new_request_id, set_request_context
 
@@ -358,11 +358,7 @@ async def analyze_stream(req: AnalyzeRequest):
     request_id = new_request_id("anlz_s")
     set_request_context(request_id, "analyze/stream")
 
-    key = settings.tokenhub_api_key
-    if not key:
-        raise HTTPException(503, "TokenHub API key 未配置，请联系管理员")
-
-    gateway = StreamGateway(key)
+    gateway = get_stream_gateway()
     user_prompt = f"段子内容：\n{req.text}\n\n用单口喜剧优秀编剧的视角进行深度分析，严格按Schema格式返回JSON，不要输出Schema以外任何文字。"
 
     return StreamingResponse(

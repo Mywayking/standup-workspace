@@ -3,7 +3,7 @@ import sqlite3
 from pathlib import Path
 from typing import Generator
 
-from sqlalchemy import create_engine, event, Column, Integer, String, Text, DateTime, ForeignKey, JSON, Float
+from sqlalchemy import create_engine, event, Column, Integer, String, Text, DateTime, ForeignKey, JSON, Float, UniqueConstraint
 from sqlalchemy.orm import sessionmaker, Session, relationship, declarative_base
 from datetime import datetime
 
@@ -199,6 +199,75 @@ class PromptFragment(Base):
     content = Column(Text, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     updated_by = Column(String(100), default="human")          # human or agent name
+
+
+# ─── Auth Models ───────────────────────────────────────────────────────────────
+
+class User(Base):
+    """用户主表（方案 B user_id 用自增 id，与 ULID 并存）"""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ulid = Column(String(32), unique=True, nullable=False, index=True)  # 对外暴露的 ID
+    nickname = Column(String(100), default="")
+    avatar_url = Column(String(500), default="")
+    status = Column(String(20), default="active")  # active / suspended
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login_at = Column(DateTime, nullable=True)
+
+    auth_methods = relationship("UserAuthMethod", back_populates="user", cascade="all, delete-orphan")
+    reset_tokens = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan")
+
+
+class UserAuthMethod(Base):
+    """用户的认证方式（邮箱/手机号 + 密码）"""
+    __tablename__ = "user_auth_methods"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    auth_type = Column(String(20), nullable=False)  # email / phone
+    auth_identifier = Column(String(255), nullable=False)  # 邮箱或手机号
+    password_hash = Column(String(255), nullable=False)
+    is_verified = Column(Integer, default=0)  # V1 默认 false
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", back_populates="auth_methods")
+
+    __table_args__ = (
+        # 同一 auth_identifier 全局唯一
+        UniqueConstraint(auth_type, auth_identifier, name="uq_auth_type_identifier"),
+    )
+
+
+class PasswordResetToken(Base):
+    """密码重置令牌"""
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    auth_method_id = Column(Integer, ForeignKey("user_auth_methods.id"), nullable=False)
+    token_hash = Column(String(255), nullable=False, index=True)
+    expired_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="reset_tokens")
+    auth_method = relationship("UserAuthMethod")
+
+
+class AuthSession(Base):
+    """Session 存储（SQLite 版，省去 Redis 依赖）"""
+    __tablename__ = "auth_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String(64), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_seen_at = Column(DateTime, default=datetime.utcnow)
+    expired_at = Column(DateTime, nullable=False)
+
+    user = relationship("User")
 
 
 def get_db() -> Generator[Session, None, None]:

@@ -2,8 +2,10 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 
+type Phase = "idle" | "thinking" | "done" | "error" | "cancelled";
+
 interface StreamingState {
-  phase: "idle" | "thinking" | "done" | "error";
+  phase: Phase;
   displayText: string;
   result: PremiseResult | null;
   error: string | null;
@@ -24,6 +26,7 @@ interface PremiseResult {
   scene_suggestions: string[];
   expansion_directions: string[];
   ending_direction: string;
+  _meta?: Record<string, unknown>;
 }
 
 function esc(s: unknown): string {
@@ -37,6 +40,8 @@ function esc(s: unknown): string {
 }
 
 const GUIDE_TEXT = "讲一件事、一个经历、一个观察，AI 帮你提炼出可以上台说的喜剧前提。";
+const SLOW_WARNING_SECONDS = 15;
+const TIMEOUT_SECONDS = 60;
 
 function formatPremiseShare(result: PremiseResult) {
   const lines = [
@@ -77,7 +82,6 @@ export default function PremiseTab({
     result: null,
     error: null,
   });
-  const { toast } = useToast();
   const abortRef = useRef<AbortController | null>(null);
   const streamRef = useRef(stream);
   streamRef.current = stream;
@@ -98,124 +102,108 @@ export default function PremiseTab({
     }
   }, [canAnalyze, stream.phase]);
 
-  // Expose regenerate for result view buttons
   regenerateRef.current = handleRegenerate;
+
+  const handleCancel = useCallback(() => {
+    abortRef.current?.abort();
+    setStream((s) => ({ ...s, phase: "cancelled", error: "已取消本次分析" }));
+    abortRef.current = null;
+  }, []);
 
   const handleAnalyze = useCallback(async () => {
     if (!canAnalyze || stream.phase === "thinking") return;
 
-    const sid = Math.random().toString(36).slice(2, 10);
     const controller = new AbortController();
     abortRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 120_000);
+    let slowTimer: ReturnType<typeof setTimeout> | null = null;
+    let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
 
     setStream({ phase: "thinking", displayText: "", result: null, error: null });
 
+    // 15 秒慢响应警告
+    slowTimer = setTimeout(() => {
+      if (abortRef.current === controller) {
+        setStream((s) =>
+          s.phase === "thinking"
+            ? { ...s, displayText: "模型响应较慢，仍在等待结果…" }
+            : s
+        );
+      }
+    }, SLOW_WARNING_SECONDS * 1000);
+
+    // 60 秒自动超时
+    timeoutTimer = setTimeout(() => {
+      controller.abort();
+    }, TIMEOUT_SECONDS * 1000);
+
+    // 用 writeApi.extractPremise 替代手写 fetch
+    const { writeApi } = await import("@/lib/api");
+
     try {
-      const resp = await fetch(`/api/extract-premise/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: inputText.trim() }),
+      await writeApi.extractPremise(inputText.trim(), {
         signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (!resp.ok) {
-        const body = await resp.text();
-        setStream((s) => ({ ...s, phase: "error", error: `HTTP ${resp.status}: ${body}` }));
-        return;
-      }
-
-      const reader = resp.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let pendingEvent = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        while (buffer.includes("\n")) {
-          const nl = buffer.indexOf("\n");
-          const line = buffer.slice(0, nl).trim();
-          buffer = buffer.slice(nl + 1);
-
-          if (line.startsWith("event: ")) {
-            pendingEvent = line.slice(7).trim();
-            continue;
-          }
-
-          if (!line.startsWith("data: ")) {
-            if (line === "") {
-              pendingEvent = "";
-            }
-            continue;
-          }
-
-          const dataStr = line.slice(6);
-          const evt = pendingEvent;
-
-          if (evt === "token") {
-            // 不在 UI 展示原始 token，避免协议内容泄露
-            continue;
-          } else if (evt === "progress") {
-            try {
-              const data = JSON.parse(dataStr);
-              // 阶段提示用覆盖而非追加，避免累积混乱
-              setStream((s) => ({
-                ...s,
-                displayText: data.message || "正在分析素材…",
-              }));
-            } catch {
-              setStream((s) => ({ ...s, displayText: "正在分析素材…" }));
-            }
+        timeoutMs: TIMEOUT_SECONDS * 1000,
+        onEvent: (evt, data) => {
+          if (evt === "progress") {
+            const d = data as { status?: string };
+            setStream((s) => ({
+              ...s,
+              displayText: d.status || "正在分析中…",
+            }));
           } else if (evt === "analysis") {
-            try {
-              const data = JSON.parse(dataStr);
-              setStream((s) => ({
-                ...s,
-                displayText:
-                  "已识别：「" +
-                  (data.theme || "—") +
-                  "」｜态度：「" +
-                  (data.attitude || "—") +
-                  "」｜核心矛盾：「" +
-                  (data.conflict || data.core_conflict || "提炼中") +
-                  "」",
-              }));
-            } catch {}
+            const d = data as { theme?: string; attitude?: string; conflict?: string; core_conflict?: string };
+            setStream((s) => ({
+              ...s,
+              displayText:
+                "已识别：「" +
+                (d.theme || "—") +
+                "」｜态度：「" +
+                (d.attitude || "—") +
+                "」｜核心矛盾：「" +
+                (d.conflict || d.core_conflict || "提炼中") +
+                "」",
+            }));
           } else if (evt === "done") {
-            try {
-              const data = JSON.parse(dataStr);
-              setStream({ phase: "done", displayText: "", result: data, error: null });
-
-
-            } catch {
-              setStream((s) => ({ ...s, phase: "error", error: "解析返回数据失败" }));
-            }
+            clearTimeout(slowTimer!);
+            clearTimeout(timeoutTimer!);
+            const d = data as PremiseResult;
+            setStream({ phase: "done", displayText: "", result: d, error: null });
           } else if (evt === "error") {
-            try {
-              const data = JSON.parse(dataStr);
-              setStream((s) => ({ ...s, phase: "error", error: data.error || "未知错误" }));
-            } catch {
-              setStream((s) => ({ ...s, phase: "error", error: "未知错误" }));
-            }
+            clearTimeout(slowTimer!);
+            clearTimeout(timeoutTimer!);
+            const d = data as { error?: string };
+            setStream((s) => ({
+              ...s,
+              phase: "error",
+              error: d.error || "分析失败，请重试",
+            }));
+          } else if (evt === "meta") {
+            // meta 事件仅记录，不更新 UI
+          } else if (evt === "token") {
+            // token 事件不展示
           }
-        }
+        },
+      });
+    } catch (err: unknown) {
+      clearTimeout(slowTimer!);
+      clearTimeout(timeoutTimer!);
+      const errName = (err as Error)?.name ?? "";
+      const errMsg = (err as Error)?.message ?? "";
+      if (errName === "AbortError" || errName === "CanceledError") {
+        setStream((s) =>
+          s.phase === "thinking" ? { ...s, phase: "cancelled", error: "请求已取消" } : s
+        );
+      } else if (errMsg.includes("timeout") || errMsg.includes("超时")) {
+        setStream((s) => ({ ...s, phase: "error", error: "模型响应超时，请重试或稍后再试" }));
+      } else if (
+        errMsg.includes("network") ||
+        errMsg.includes("Failed to fetch") ||
+        errMsg.includes("Load failed")
+      ) {
+        setStream((s) => ({ ...s, phase: "error", error: "网络连接异常，请检查网络后重试" }));
+      } else {
+        setStream((s) => ({ ...s, phase: "error", error: errMsg || "生成失败，请重试" }));
       }
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      const msg = mapUserError(err);
-      let userMsg = "生成失败，请重试";
-      if (err.name === "AbortError") {
-        userMsg = "请求超时（120秒），请稍后重试";
-      } else if (msg.includes("network") || msg.includes("Failed to fetch") || msg.includes("Load failed")) {
-        userMsg = "网络连接异常，请检查网络后重试";
-      } else if (msg.includes("HTTP")) {
-        userMsg = msg;
-      }
-      setStream((s) => ({ ...s, phase: "error", error: userMsg }));
     } finally {
       abortRef.current = null;
     }
@@ -225,13 +213,9 @@ export default function PremiseTab({
   const hasResult = stream.phase === "done" && stream.result;
   const raw = stream.displayText ?? "";
   const cleaned = raw.replace(/[{}\[\]"":\\]/g, "").replace(/\n/g, " ").replace(/,{2,}/g, " ").replace(/\s{2,}/g, " ").trim();
-
-  // 安全兜底：检测协议垃圾数据，只在确认安全时展示
-  // 只拦截真正的协议残留：JSON 对象、Unicode 转义、字段引用语法
   const looksLikeProtocol = /[{}]|\\u[0-9a-fA-F]{4}|"[\w_]+"\s*:/.test(raw);
   const previewText = !cleaned ? "正在分析素材，马上给你前提候选…" : looksLikeProtocol ? "正在分析素材，马上给你前提候选…" : cleaned;
 
-  // Derive simple parts for display
   const introItems = [
     "识别主题和态度",
     "提炼核心矛盾",
@@ -272,7 +256,6 @@ export default function PremiseTab({
             </div>
           </div>
 
-
           <textarea
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
@@ -296,23 +279,37 @@ export default function PremiseTab({
                 <span className="text-xs text-green-500">✓ 可以开始提炼</span>
               )}
             </div>
-            <button
-              onClick={handleAnalyze}
-              disabled={!canAnalyze || isStreaming}
-              className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {isStreaming ? "分析中..." : "开始提炼"}
-            </button>
+            {isStreaming ? (
+              <button
+                onClick={handleCancel}
+                className="px-5 py-2 bg-gray-400 text-white text-sm font-semibold rounded-lg hover:bg-gray-500 transition-colors"
+              >
+                取消
+              </button>
+            ) : (
+              <button
+                onClick={handleAnalyze}
+                disabled={!canAnalyze}
+                className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                开始提炼
+              </button>
+            )}
           </div>
           <p className="text-xs text-gray-400 mt-2">生成后自动保存到右侧创作会话</p>
         </div>
 
         {/* Streaming state */}
-        {stream.phase === "thinking" && (
+        {(stream.phase === "thinking" || stream.phase === "cancelled") && (
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
             <div className="flex items-center gap-3 mb-4">
               <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-sm font-semibold text-gray-700">AI 分析中</span>
+              <span className="text-sm font-semibold text-gray-700">
+                {stream.phase === "cancelled" ? "已取消" : "AI 分析中"}
+              </span>
+              {stream.phase === "cancelled" && (
+                <span className="text-xs text-gray-400">已取消本次分析</span>
+              )}
             </div>
             <div className="bg-gray-50 rounded-xl p-4 min-h-[80px]">
               {previewText ? (
@@ -331,8 +328,11 @@ export default function PremiseTab({
         {stream.phase === "error" && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4">
             <p className="text-red-600 text-sm">❌ {stream.error}</p>
-            <button onClick={() => setStream((s) => ({ ...s, phase: "idle" }))} className="mt-2 text-sm text-red-500 hover:text-red-700">
-              重试
+            <button
+              onClick={() => setStream((s) => ({ ...s, phase: "idle" }))}
+              className="mt-2 text-sm text-red-500 hover:text-red-700 font-medium"
+            >
+              重新分析
             </button>
           </div>
         )}
@@ -391,9 +391,8 @@ export default function PremiseTab({
   );
 }
 
-// ─── Result sub-component (defined before use) ────────────────────────────────
+// ─── Result sub-component ────────────────────────────────────────────────────
 
-import { mapUserError } from "@/utils/errorMapper";
 function PremiseResultView({
   result,
   onAction,
@@ -410,7 +409,6 @@ function PremiseResultView({
   const themeItem = { label: "主题", value: result.theme, icon: "📋" };
   const attitudeItem = { label: "态度", value: result.attitude, icon: "💢" };
   const conflictItem = { label: "核心矛盾", value: result.conflict, icon: "⚡" };
-
   const basicItems = [themeItem, attitudeItem, conflictItem];
 
   return (
@@ -481,9 +479,7 @@ function PremiseResultView({
               📤 分享
             </button>
             <button
-              onClick={() => {
-                navigator.clipboard.writeText(result.recommendation.text).catch(() => {});
-              }}
+              onClick={() => navigator.clipboard.writeText(result.recommendation.text).catch(() => {})}
               className="px-3 py-1.5 bg-white border border-blue-200 text-blue-700 text-xs font-medium rounded-lg hover:bg-blue-50 transition-colors"
             >
               📋 复制前提

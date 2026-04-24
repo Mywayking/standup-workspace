@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import LoginModal from "@/components/LoginModal";
 
 const BASE = "";
 
@@ -790,6 +792,8 @@ function StreamingResultCard({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function WritePage({ initialText, sourcePath, onClearPending, onResultDone }: { initialText?: string; sourcePath?: string[]; onClearPending?: () => void; onResultDone?: (content: string, rawData: unknown, sourcePath?: string[]) => void }) {
+  const { loggedIn } = useAuth();
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [inputText, setInputText] = useState(initialText ?? "");
   const [stream, setStream] = useState<StreamingState>({
     phase: "idle",
@@ -853,6 +857,10 @@ export default function WritePage({ initialText, sourcePath, onClearPending, onR
 
   const handleAnalyze = async () => {
     if (inputText.trim().length < 20) return;
+    if (!loggedIn) {
+      setLoginModalOpen(true);
+      return;
+    }
 
     // Cancel any in-flight request before starting a new one
     abortRef.current?.abort();
@@ -1242,6 +1250,11 @@ ${s.text}`
         onClose={() => setCmdKOpen(false)}
         query={cmdKQuery}
         onQuery={setCmdKQuery}
+      />
+      <LoginModal
+        open={loginModalOpen}
+        onClose={() => setLoginModalOpen(false)}
+        defaultTab="register"
       />
     </div>
   );

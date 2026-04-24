@@ -96,12 +96,25 @@ export const exportApi = {
 
 // ─── Write / Comedy Tools ────────────────────────────────────────────────────
 
+export interface StreamEvents {
+  done: unknown;
+  error: { error: string; _meta?: Record<string, unknown> };
+  progress: { status: string; model?: string; attempt?: number };
+  meta?: { selected_model: string; total_latency_ms: number; attempt_count: number };
+  token: string;
+  [key: string]: unknown;
+}
+
 /**
  * SSE 流式 POST 请求。
  * onChunk(data) 每收到一个 data 事件解析后调用。
- * onEvent(event, data) 处理具名事件（progress | analysis | done | error）。
+ * onEvent(event, data) 处理具名事件（progress | analysis | done | error | meta）。
+ *
+ * timeoutMs 默认 60 秒。
+ * AbortError → 抛出 "请求已取消或超时"。
+ * reader 结束后无 done/error → onEvent("error", { error: "连接已结束，但未收到分析结果" })
  */
-export function streamPost(
+export function streamPost<T extends StreamEvents>(
   path: string,
   body: Record<string, string>,
   opts?: {
@@ -110,8 +123,8 @@ export function streamPost(
     signal?: AbortSignal;
     timeoutMs?: number;
   }
-) {
-  const { onChunk, onEvent, signal, timeoutMs = 180_000 } = opts ?? {};
+): Promise<void> {
+  const { onChunk, onEvent, signal, timeoutMs = 60_000 } = opts ?? {};
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -122,6 +135,8 @@ export function streamPost(
         return controller.signal;
       })()
     : controller.signal;
+
+  let gotFinalEvent = false;
 
   return fetch(`${BASE}${path}`, {
     method: "POST",
@@ -158,8 +173,19 @@ export function streamPost(
         try {
           const data = JSON.parse(dataStr);
           onEvent?.(pendingEvent, data);
+          // Track if we got a terminal event
+          if (pendingEvent === "done" || pendingEvent === "error") {
+            gotFinalEvent = true;
+          }
         } catch { /* 非 JSON 数据 */ }
       }
+    }
+
+    // Safety net: reader finished but no done/error received
+    if (!gotFinalEvent) {
+      onEvent?.("error", {
+        error: "连接已结束，但未收到分析结果，请重试",
+      });
     }
   });
 }
@@ -180,4 +206,85 @@ export const writeApi = {
   /** 改稿分析（流式） */
   analyze: (text: string, opts?: Parameters<typeof streamPost>[2]) =>
     streamPost("/api/analyze/stream", { text }, opts),
+};
+
+// ─── Auth API ─────────────────────────────────────────────────────────────────
+
+export interface AuthUser {
+  id: string;
+  nickname: string;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface MeResponse {
+  loggedIn: boolean;
+  user: AuthUser | null;
+}
+
+export const authApi = {
+  me: (): Promise<MeResponse> =>
+    fetch("/api/auth/me").then(r => r.json()),
+
+  register: (payload: {
+    identifier: string;
+    identifierType: "email" | "phone";
+    password: string;
+    confirmPassword: string;
+  }): Promise<{ success: boolean; user?: AuthUser; detail?: string }> =>
+    fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(async r => {
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "注册失败");
+      return data;
+    }),
+
+  login: (payload: {
+    identifier: string;
+    password: string;
+  }): Promise<{ success: boolean; user?: AuthUser; detail?: string }> =>
+    fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(async r => {
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "登录失败");
+      return data;
+    }),
+
+  logout: (): Promise<{ success: boolean }> =>
+    fetch("/api/auth/logout", { method: "POST" }).then(r => r.json()),
+
+  forgotPassword: (payload: {
+    identifier: string;
+    identifierType: "email";
+  }): Promise<{ success: boolean; message?: string; detail?: string }> =>
+    fetch("/api/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(async r => {
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "请求失败");
+      return data;
+    }),
+
+  resetPassword: (payload: {
+    tokenId: number;
+    token: string;
+    newPassword: string;
+  }): Promise<{ success: boolean; message?: string; detail?: string }> =>
+    fetch("/api/auth/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(async r => {
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "重置失败");
+      return data;
+    }),
 };

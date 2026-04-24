@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from ..config import settings
 from ..utils.logging import api_logger, llm_logger, new_request_id, set_request_context
 from ..utils.errors import _classify_error
-from ..llm import LLMGateway, llm_gateway, StreamGateway, LLMRequest, LLMMessage
+from ..llm import LLMGateway, llm_gateway, get_stream_gateway, LLMRequest, LLMMessage
 
 
 logger = logging.getLogger(__name__)
@@ -241,11 +241,7 @@ async def find_angles_stream(req: dict):
     request_id = new_request_id("fa")
     set_request_context(request_id, "find-angles/stream")
 
-    key = settings.tokenhub_api_key
-    if not key:
-        raise HTTPException(503, "TokenHub API key 未配置，请联系管理员")
-
-    gateway = StreamGateway(key)
+    gateway = get_stream_gateway()
 
     llm_req = LLMRequest(
         scene="find_angles",
