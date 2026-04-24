@@ -78,7 +78,7 @@ export default function PremiseTab({
     try { return localStorage.getItem("premise_intro_dismissed") === "1"; } catch { return false; }
   });
 
-  const { state, start, abort } = useStreamingTask<PremiseResult>("/api/write/premise/stream", {
+  const { state, start, abort, setError } = useStreamingTask<PremiseResult>("/api/write/premise/stream", {
     timeoutMs: 60_000,
     slowWarningMs: 15_000,
     onToken: () => { /* tokens not displayed */ },
@@ -87,6 +87,14 @@ export default function PremiseTab({
     },
     onMeta: (m) => setMeta(m),
     onDone: (r) => {
+      // Validate: must have premise_candidates with items or a recommendation
+      const rRec = r as unknown as Record<string, unknown>;
+      const candidates = rRec.premise_candidates;
+      const rec = rRec.recommendation as Record<string, unknown> | undefined;
+      if ((!candidates || !Array.isArray(candidates) || candidates.length === 0) && (!rec || !rec.text)) {
+        setError("模型返回格式不完整，请重试");
+        return;
+      }
       setResult(r);
     },
     onError: () => { /* handled by state.phase */ },

@@ -78,7 +78,7 @@ export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?
     try { return localStorage.getItem("jtp_intro_dismissed") === "1"; } catch { return false; }
   });
 
-  const { state, start, abort } = useStreamingTask<JTPResult>("/api/write/joke-to-premise/stream", {
+  const { state, start, abort, setError } = useStreamingTask<JTPResult>("/api/write/joke-to-premise/stream", {
     timeoutMs: 60_000,
     slowWarningMs: 15_000,
     onProgress: (data) => {
@@ -86,6 +86,13 @@ export default function JokeToPremiseTab({ onAction, onResultDone }: { onAction?
     },
     onMeta: (m) => setMeta(m),
     onDone: (r) => {
+      // Validate: must have premises with items
+      const rRec = r as unknown as Record<string, unknown>;
+      const premises = rRec.premises;
+      if (!premises || !Array.isArray(premises) || premises.length === 0) {
+        setError("模型返回格式不完整，请重试");
+        return;
+      }
       setResult(r);
       setPremises((r.premises ?? []).map((p: any) => ({
         id: p.id || "p1",

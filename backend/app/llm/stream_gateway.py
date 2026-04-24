@@ -9,6 +9,7 @@ from typing import AsyncGenerator
 import httpx
 
 from ..config import settings
+from ..utils.json_repair import parse_llm_json
 from ..utils.logging import llm_logger
 from .schemas import LLMRequest, ModelAttempt
 from .errors import LLMTimeoutError, LLMHTTPError, LLMParseError, LLMEmptyError
@@ -101,10 +102,9 @@ class StreamGateway:
                 total_latency = int((time.time() - start_time) * 1000)
                 content_str = "".join(token_buffer)
 
-                # Parse accumulated content as JSON
-                try:
-                    result_dict = json.loads(content_str) if content_str else {}
-                except json.JSONDecodeError:
+                # Parse accumulated content as JSON using robust parser
+                result_dict = parse_llm_json(content_str)
+                if result_dict is None:
                     result_dict = {"text": content_str, "_raw": True} if content_str else {}
 
                 attempts.append(ModelAttempt(
@@ -374,9 +374,8 @@ class StreamGateway:
         if not content:
             raise LLMEmptyError(model)
 
-        try:
-            content_dict = json.loads(content)
-        except json.JSONDecodeError:
+        content_dict = parse_llm_json(content)
+        if content_dict is None:
             content_dict = {"text": content, "_raw": True}
 
         return content_dict, latency_ms

@@ -49,6 +49,7 @@ export interface StreamingTaskResult<T> {
   start: (body: Record<string, string>) => void;
   abort: () => void;
   retry: () => void;
+  setError: (msg: string) => void;
 }
 
 /**
@@ -149,7 +150,15 @@ export function useStreamingTask<T>(
           } else if (evt === "done") {
             clearTimers();
             const d = data as { result?: T; _meta?: StreamingMeta };
-            resultRef.current = d.result ?? (data as T);
+            // Normalize: extract result if present, otherwise use data directly
+            const raw = d.result !== undefined ? d.result : (data as T);
+            // If _raw flag is set, the JSON was incomplete — treat as invalid
+            const normalized = (raw as Record<string, unknown>)?._raw === true ? null : raw;
+            if (normalized === null) {
+              onError?.("模型返回格式不完整，请重试", "INVALID_RESPONSE", metaRef.current ?? undefined);
+              return;
+            }
+            resultRef.current = normalized;
             metaRef.current = d._meta ?? null;
             setState((s) => ({
               ...s,
@@ -241,5 +250,16 @@ export function useStreamingTask<T>(
     });
   }, []);
 
-  return { state, start, abort, retry };
+  const setError = useCallback((msg: string) => {
+    clearTimers();
+    setState((s) => ({
+      ...s,
+      phase: "error",
+      slowWarning: false,
+      error: msg,
+      meta: null,
+    }));
+  }, [clearTimers]);
+
+  return { state, start, abort, retry, setError };
 }

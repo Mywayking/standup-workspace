@@ -64,7 +64,7 @@ export default function AnglesTab({ onAction, initialData, sourcePath, onClearPe
   const { toast } = useToast();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { state, start, abort } = useStreamingTask<AnglesResult>("/api/write/angles/stream", {
+  const { state, start, abort, setError } = useStreamingTask<AnglesResult>("/api/write/angles/stream", {
     timeoutMs: 120_000,
     slowWarningMs: 30_000,
     onProgress: (data) => {
@@ -72,6 +72,14 @@ export default function AnglesTab({ onAction, initialData, sourcePath, onClearPe
     },
     onMeta: (m) => setMeta(m),
     onDone: (r) => {
+      // Validate: must have angles with items or a recommendation
+      const rRec = r as unknown as Record<string, unknown>;
+      const angles = rRec.angles;
+      const rec = rRec.recommendation as Record<string, unknown> | undefined;
+      if ((!angles || !Array.isArray(angles) || angles.length === 0) && (!rec || !rec.name)) {
+        setError("模型返回格式不完整，请重试");
+        return;
+      }
       setResult(r);
     },
   });

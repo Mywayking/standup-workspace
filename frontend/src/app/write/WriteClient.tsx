@@ -963,6 +963,18 @@ export default function WritePage({ initialText, sourcePath, onClearPending, onR
               setStream((s) => ({ ...s, phase: "error", error: "解析结果格式异常，以下为原始内容", displayText: display }));
               return;
             }
+            // Validate: check _raw flag or essential fields completeness
+            const finalRec = final as Record<string, unknown>;
+            const hasRaw = finalRec._raw === true;
+            const segments: unknown[] = Array.isArray(finalRec.segments) ? finalRec.segments : [];
+            const improvedScript = finalRec.improved_script;
+            const scriptChanges: unknown[] = Array.isArray(finalRec.script_changes) ? finalRec.script_changes : [];
+            if (hasRaw || (segments.length === 0 && !improvedScript && scriptChanges.length === 0)) {
+              const fallback = stream.rawTokens || eventData;
+              const display = fallback.length > 500 ? "..." + fallback.slice(-500) : fallback;
+              setStream((s) => ({ ...s, phase: "error", error: "模型返回格式不完整，请重试", displayText: display }));
+              return;
+            }
             const result: AnalyzeResult = {
               evaluation: final.evaluation ?? {},
               performer_tags: final.performer_tags ?? [],
