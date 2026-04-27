@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { useWorkflow, type WorkflowCard, type CardType, type WorkflowSession } from "./WorkflowContext";
 import { getWorkflowCardSummary } from "@/lib/workflowSummary";
 import { canContinueCard, canContinueSession, getValidCardCount } from "@/lib/workflowHistory";
-import { WORKFLOW_ACTIONS, useWorkflowActions } from "@/lib/workflowActions";
+import { WORKFLOW_ACTIONS, useWorkflowActions, extractRewriteContent } from "@/lib/workflowActions";
 import { useAuth } from "./AuthContext";
 import { useToast } from "@/components/Toast";
 
@@ -50,7 +50,7 @@ function CardDetailModal({
 }: {
   card: WorkflowCard;
   onClose: () => void;
-  onContinue?: (target: CardType, content: string, sourcePath: string[]) => void;
+  onContinue?: (target: CardType, content: string, sourcePath: string[], cardTitle?: string) => void;
   onCopy?: (content: string) => void;
 }) {
   const raw = card.rawData as Record<string, unknown>;
@@ -345,7 +345,11 @@ function CardDetailModal({
           {continueAction && onContinue && (
             <button
               onClick={() => {
-                onContinue(continueAction.target, copyableContent, card.sourcePath);
+                // 改稿目标使用 extractRewriteContent 获取完整结构化内容
+                const content = continueAction.target === "rewrite"
+                  ? extractRewriteContent(card)
+                  : copyableContent;
+                onContinue(continueAction.target, content, card.sourcePath, card.title);
                 onClose();
               }}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"

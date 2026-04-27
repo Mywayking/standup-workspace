@@ -200,8 +200,8 @@ interface WorkflowContextValue {
   deleteCard: (cardId: string) => void;
   appendRewriteVersion: (rewriteContent: string, rawData: unknown, sourcePath: string[], sourceInput?: string) => string;
   // Handoff: SessionPanel calls this to trigger WriteTabs' pending fill + tab switch
-  handoff: (type: CardType, content: string, sourcePath: string[]) => void;
-  setHandoffCallback: (fn: (type: CardType, content: string, sourcePath: string[]) => void) => void;
+  handoff: (type: CardType, content: string, sourcePath: string[], cardTitle?: string) => void;
+  setHandoffCallback: (fn: (type: CardType, content: string, sourcePath: string[], cardTitle?: string) => void) => void;
   sessions: WorkflowSession[];
   restoreSession: (id: string) => void;
   deleteSession: (id: string) => void;
@@ -226,7 +226,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
   const { user, loggedIn } = useAuth();
   const [session, setSession] = useState<WorkflowSession | null>(null);
   const [sessions, setSessions] = useState<WorkflowSession[]>([]);
-  const handoffRef = useRef<((type: CardType, content: string, sourcePath: string[]) => void) | null>(null);
+  const handoffRef = useRef<((type: CardType, content: string, sourcePath: string[], cardTitle?: string) => void) | null>(null);
 
   // P2: Load sessions on mount (localStorage for all; cloud for logged-in users)
   useEffect(() => {
@@ -404,12 +404,12 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     [loggedIn]
   );
 
-  const handoff = useCallback((type: CardType, content: string, sourcePath: string[]) => {
-    handoffRef.current?.(type, content, sourcePath);
+  const handoff = useCallback((type: CardType, content: string, sourcePath: string[], cardTitle?: string) => {
+    handoffRef.current?.(type, content, sourcePath, cardTitle);
   }, []);
 
   const setHandoffCallback = useCallback(
-    (fn: (type: CardType, content: string, sourcePath: string[]) => void) => {
+    (fn: (type: CardType, content: string, sourcePath: string[], cardTitle?: string) => void) => {
       handoffRef.current = fn;
     },
     []

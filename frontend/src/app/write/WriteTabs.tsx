@@ -70,7 +70,7 @@ function WriteTabsInner() {
   const { toast } = useToast();
   const { loggedIn } = useAuth();
 
-  const handleHandoff = (targetType: CardType, content: string, sourcePath: string[]) => {
+  const handleHandoff = (targetType: CardType, content: string, sourcePath: string[], cardTitle?: string) => {
     const label: Record<CardType, string> = {
       source: "素材",
       premise: "提炼前提",
@@ -78,21 +78,22 @@ function WriteTabsInner() {
       rewrite: "改稿",
       joke_to_premise: "梗写前提",
     };
+    const shortTitle = cardTitle?.slice(0, 25) || label[targetType];
     if (targetType === "premise") {
       setPendingPremise({ text: content, sourcePath });
       setActiveTab("premise");
-      toast(`已带入「${label[targetType]}」`);
+      toast(`已带入「${shortTitle}」`);
     } else if (targetType === "angles") {
       setPendingAngle({ text: content, sourcePath });
       setActiveTab("angles");
-      toast(`已带入「${label[targetType]}」`);
+      toast(`已带入「${shortTitle}」`);
     } else if (targetType === "rewrite") {
       setPendingRewrite({ text: content, sourcePath });
       setActiveTab("rewrite");
-      toast(`已带入「${label[targetType]}」`);
+      toast(`已带入「${shortTitle}」`);
     } else if (targetType === "joke_to_premise") {
       setActiveTab("joke_to_premise");
-      toast(`已带入「梗写前提」`);
+      toast(`已带入「${shortTitle}」`);
     }
   };
 

@@ -2,6 +2,87 @@ import type { CardType, WorkflowCard } from "@/contexts/WorkflowContext";
 import { useWorkflow } from "@/contexts/WorkflowContext";
 import { useToast } from "@/components/Toast";
 
+/**
+ * 从不同类型卡片提取改稿所需的结构化内容
+ * 禁止 fallback 到 currentDraft 或 globalState
+ */
+export function extractRewriteContent(card: WorkflowCard): string {
+  const raw = card.rawData as any;
+
+  if (card.type === "angles") {
+    const recommended = raw?.recommended || {};
+    const angleList = raw?.angles || raw?.items || [];
+
+    const recommendedText = recommended.title || recommended.name
+      ? [
+          "【推荐角度】",
+          `${recommended.title || recommended.name}${recommended.reason ? "：「" + recommended.reason + "」" : ""}`,
+        ].filter(Boolean).join("\n")
+      : "";
+
+    const listText = Array.isArray(angleList) && angleList.length
+      ? [
+          "【可用角度列表】",
+          ...angleList.map((item: any, i: number) => {
+            const title = item.title || item.name || item.angle || "";
+            const content = item.content || item.description || item.text || "";
+            return `${i + 1}. ${title}${content ? "：「" + content + "」" : ""}`;
+          }),
+        ].join("\n")
+      : "";
+
+    const combined = [recommendedText, listText].filter(Boolean).join("\n\n");
+    if (combined) return combined;
+  }
+
+  if (card.type === "premise") {
+    const candidates = raw?.premise_candidates || [];
+    const recommended = raw?.recommendation || {};
+
+    const candidatesText = Array.isArray(candidates) && candidates.length
+      ? [
+          "【前提候选】",
+          ...candidates.map((c: any, i: number) =>
+            `${i + 1}. ${c.text || c.premise || ""}${c.reason ? "（" + c.reason + "）" : ""}`
+          ),
+        ].join("\n")
+      : "";
+
+    const recommendedText = recommended.text || recommended.premise
+      ? [
+          "【推荐前提】",
+          `${recommended.text || recommended.premise}`,
+        ].join("\n")
+      : "";
+
+    const combined = [recommendedText, candidatesText].filter(Boolean).join("\n\n");
+    if (combined) return combined;
+  }
+
+  if (card.type === "joke_to_premise") {
+    const candidates = raw?.candidates || [];
+
+    const candidatesText = Array.isArray(candidates) && candidates.length
+      ? [
+          "【梗写前提】",
+          ...candidates.map((c: any, i: number) =>
+            `${i + 1}. ${c.premise || ""}${c.logic ? "：「" + c.logic + "」" : ""}`
+          ),
+        ].join("\n")
+      : "";
+
+    const combined = candidatesText;
+    if (combined) return combined;
+  }
+
+  if (card.type === "rewrite") {
+    return card.content || "";
+  }
+
+  // 最终兜底：只取 content，不 fallback 到任何全局状态
+  return card.content || "";
+}
+
 export interface WorkflowAction {
   label: string;
   target?: CardType | "rewrite";
@@ -95,13 +176,15 @@ export function useWorkflowActions() {
     }
 
     if (action.target) {
-      const content = getCardContent(card);
+      // 改稿目标使用 extractRewriteContent 获取完整结构化内容
+      const isRewrite = action.target === "rewrite";
+      const content = isRewrite ? extractRewriteContent(card) : getCardContent(card);
       if (!content.trim()) {
-        toast("这条记录没有可继续的内容", "error");
+        toast("这条记录没有可带入改稿的内容", "error");
         return false;
       }
-      handoff(action.target, content, card.sourcePath);
-      toast(`已带入「${action.label}」`);
+      const shortTitle = card.title?.slice(0, 25) || "内容";
+      handoff(action.target, content, card.sourcePath, shortTitle);
       return true;
     }
 
