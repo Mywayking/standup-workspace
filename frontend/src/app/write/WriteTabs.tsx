@@ -4,6 +4,7 @@ import { useToast } from "@/components/Toast";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { ToastProvider } from "@/components/Toast";
 import { WorkflowProvider, useWorkflow, type CardType } from "@/contexts/WorkflowContext";
+import { useAuth } from "@/contexts/AuthContext";
 import WorkflowSessionPanel from "@/contexts/WorkflowSessionPanel";
 import WriteClient from "./WriteClient";
 import PremiseTab from "./PremiseTab";
@@ -67,6 +68,7 @@ function WriteTabsInner() {
   const [pendingRewrite, setPendingRewrite] = useState<{ text: string; sourcePath: string[] } | null>(null);
 
   const { toast } = useToast();
+  const { loggedIn } = useAuth();
 
   const handleHandoff = (targetType: CardType, content: string, sourcePath: string[]) => {
     const label: Record<CardType, string> = {
@@ -132,7 +134,7 @@ function WriteTabsInner() {
         status: "success",
         sourcePath,
       });
-      toast("已保存到当前创作会话", "success");
+      toast(loggedIn ? "已保存到你的创作会话" : "已保存到本机浏览器，登录后可跨设备保存", "success");
     }
   };
 

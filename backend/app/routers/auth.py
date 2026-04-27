@@ -14,11 +14,12 @@ from ..services import auth as auth_service
 from ..services.session import create_session, delete_session, get_user_id_from_session
 from ..services.email import send_password_reset_email
 from ..config import settings
+from ..utils.cookie import set_auth_cookie, clear_auth_cookie
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-COOKIE_NAME = "session_id"
-COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days
+COOKIE_NAME = "access_token"
+COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
 
 # ─── Schemas ────────────────────────────────────────────────────────────────────
@@ -68,21 +69,6 @@ def _get_session_id(request: Request) -> Optional[str]:
     return request.cookies.get(COOKIE_NAME)
 
 
-def _set_cookie(response: Response, session_id: str) -> None:
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=session_id,
-        max_age=COOKIE_MAX_AGE,
-        httponly=True,
-        samesite="lax",
-        secure=False,  # 本地开发 HTTP，线上用 HTTPS
-    )
-
-
-def _clear_cookie(response: Response) -> None:
-    response.delete_cookie(key=COOKIE_NAME, path="/")
-
-
 def _current_user(request: Request, db: Session) -> Optional[User]:
     """从 cookie session 获取当前登录用户"""
     sid = _get_session_id(request)
@@ -127,7 +113,7 @@ def register(req: RegisterReq, response: Response, db: Session = Depends(get_db)
 
     # 创建 session
     session_id = create_session(user.id)
-    _set_cookie(response, session_id)
+    set_auth_cookie(response, session_id)
 
     # 查找用户的邮箱/手机和 profile
     email = db.query(UserAuthMethod).filter(
@@ -176,7 +162,7 @@ def login(req: LoginReq, response: Response, db: Session = Depends(get_db)):
         raise HTTPException(401, err)
 
     session_id = create_session(user.id)
-    _set_cookie(response, session_id)
+    set_auth_cookie(response, session_id)
 
     email = db.query(UserAuthMethod).filter(
         UserAuthMethod.user_id == user.id,
@@ -213,7 +199,7 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     sid = _get_session_id(request)
     if sid:
         delete_session(sid)
-    _clear_cookie(response)
+    clear_auth_cookie(response)
     return {"success": True}
 
 

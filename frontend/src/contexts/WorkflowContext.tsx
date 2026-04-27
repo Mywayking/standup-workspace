@@ -9,6 +9,8 @@ export type CardType = "source" | "premise" | "angles" | "rewrite" | "joke_to_pr
 
 export type CardStatus = "success" | "error" | "streaming";
 
+export type SaveStatus = "idle" | "saving" | "saved_local" | "saved_cloud" | "failed";
+
 export interface WorkflowCard {
   id: string;
   type: CardType;
@@ -37,6 +39,7 @@ export interface WorkflowSession {
   cards: WorkflowCard[];
   createdAt: string;
   updatedAt: string;
+  saveStatus: SaveStatus;
 }
 
 // ─── LocalStorage ─────────────────────────────────────────────────────────────
@@ -270,6 +273,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
       cards: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      saveStatus: "idle",
     });
   }, []);
 
@@ -314,6 +318,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     (sourceInput: string, card: Omit<WorkflowCard, "id" | "createdAt">): string => {
       const id = genId("card");
       const now = new Date().toISOString();
+      const newSaveStatus: SaveStatus = loggedIn ? "saved_cloud" : "saved_local";
       setSession((prev) => {
         const session = prev ?? {
           id: genId("session"),
@@ -322,16 +327,18 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
           cards: [],
           createdAt: now,
           updatedAt: now,
+          saveStatus: "idle" as SaveStatus,
         };
         return {
           ...session,
           cards: [...session.cards, { ...card, id, createdAt: now }],
           updatedAt: now,
+          saveStatus: newSaveStatus,
         };
       });
       return id;
     },
-    []
+    [loggedIn]
   );
 
   const deleteCard = useCallback((cardId: string) => {
@@ -349,6 +356,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     (rewriteContent: string, rawData: unknown, sourcePath: string[], sourceInput: string = "改稿"): string => {
       const id = genId("card");
       const now = new Date().toISOString();
+      const newSaveStatus: SaveStatus = loggedIn ? "saved_cloud" : "saved_local";
 
       setSession((prev) => {
         const session = prev ?? {
@@ -358,6 +366,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
           cards: [],
           createdAt: now,
           updatedAt: now,
+          saveStatus: "idle" as SaveStatus,
         };
         const rewriteCards = session.cards.filter((c) => c.type === "rewrite");
         const maxVersion = rewriteCards.reduce((max, c) => Math.max(max, c.version ?? 1), 0);
@@ -375,12 +384,12 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
           createdAt: now,
         };
 
-        return { ...session, cards: [...session.cards, card], updatedAt: now };
+        return { ...session, cards: [...session.cards, card], updatedAt: now, saveStatus: newSaveStatus };
       });
 
       return id;
     },
-    []
+    [loggedIn]
   );
 
   const handoff = useCallback((type: CardType, content: string, sourcePath: string[]) => {

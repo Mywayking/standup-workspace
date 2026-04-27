@@ -587,8 +587,8 @@ function EmptyState() {
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
       <p className="text-sm font-bold text-gray-800 mb-1">创作会话</p>
-      <p className="text-xs text-gray-400 mb-4">
-        从左侧开始，生成结果会自动出现在这里
+      <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+        你的创作过程会自动沉淀在这里。前提、角度、改稿都会按顺序保存，方便你回看和继续创作。
       </p>
 
       {/* P2: 同步状态提示 */}
@@ -601,7 +601,7 @@ function EmptyState() {
           ? "☁️ 记录已同步到账号"
           : loggedIn
             ? "📱 已保存到本机 · 云同步开发中"
-            : "📱 已保存到本机 · 登录后可同步"}
+            : "📱 已保存到本机 · 登录后可跨设备同步，不怕刷新丢稿"}
       </div>
 
       {sessions.length > 0 && (
@@ -671,7 +671,13 @@ export default function WorkflowSessionPanel() {
             </p>
             {session.cards.length > 0 && (
               <p className="text-xs text-green-600 mt-0.5 font-medium">
-                已自动保存 · 刚刚更新
+                {session.saveStatus === "saved_cloud"
+                  ? "已保存到你的创作会话"
+                  : session.saveStatus === "saved_local"
+                    ? "已保存到本机浏览器，登录后可跨设备保存"
+                    : session.saveStatus === "failed"
+                      ? "保存失败，已保存到本机"
+                      : "已自动保存 · 刚刚更新"}
               </p>
             )}
           </div>
@@ -709,7 +715,7 @@ export default function WorkflowSessionPanel() {
             ? "☁️ 记录已同步到账号"
             : loggedIn
               ? "📱 已保存到本机 · 云同步开发中"
-              : "📱 已保存到本机 · 登录后可同步"}
+              : "📱 已保存到本机 · 登录后可跨设备同步，不怕刷新丢稿"}
         </div>
 
         {/* 历史面板（可折叠）P1-2: 添加 30 条限制提示 */}

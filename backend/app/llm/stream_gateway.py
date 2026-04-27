@@ -9,7 +9,7 @@ from typing import AsyncGenerator
 import httpx
 
 from ..config import settings
-from ..utils.json_repair import parse_llm_json
+from .parsers.json_repair import parse_json_safely
 from ..utils.logging import llm_logger
 from .schemas import LLMRequest, ModelAttempt
 from .errors import LLMTimeoutError, LLMHTTPError, LLMParseError, LLMEmptyError
@@ -103,9 +103,24 @@ class StreamGateway:
                 content_str = "".join(token_buffer)
 
                 # Parse accumulated content as JSON using robust parser
-                result_dict = parse_llm_json(content_str)
-                if result_dict is None:
-                    result_dict = {"text": content_str, "_raw": True} if content_str else {}
+                try:
+                    result_dict = parse_json_safely(content_str)
+                except ValueError as e:
+                    total_latency = int((time.time() - start_time) * 1000)
+                    yield f"event: error\ndata: " + json.dumps({
+                        "type": "error",
+                        "code": "LLM_RESULT_PARSE_ERROR",
+                        "message": "模型返回格式异常，请重试。",
+                        "retryable": True,
+                        "_meta": {
+                            "provider": model_provider,
+                            "model": model,
+                            "latency_ms": latency_ms,
+                            "total_latency_ms": total_latency,
+                            "attempt": i + 1,
+                        },
+                    }) + "\n\n"
+                    return
 
                 attempts.append(ModelAttempt(
                     model=model, status="success", latency_ms=latency_ms,
@@ -374,9 +389,10 @@ class StreamGateway:
         if not content:
             raise LLMEmptyError(model)
 
-        content_dict = parse_llm_json(content)
-        if content_dict is None:
-            content_dict = {"text": content, "_raw": True}
+        try:
+            content_dict = parse_json_safely(content)
+        except ValueError:
+            raise LLMParseError(f"JSON parse failed after repair: {content[:200]}")
 
         return content_dict, latency_ms
 

@@ -31,6 +31,16 @@ class Settings(BaseSettings):
     llm_total_timeout_seconds: float = 70.0
     llm_stream_first_chunk_timeout: float = 12.0
 
+    # Cookie settings
+    ENV: str = "development"
+    COOKIE_SECURE: bool | None = None
+    COOKIE_SAMESITE: str = "lax"
+    COOKIE_DOMAIN: str | None = None
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENV.lower() in {"prod", "production"}
+
     def model_post_init(self, __context: Any) -> None:
         """Called after Pydantic validates all fields. Use for runtime checks."""
         logger.info(

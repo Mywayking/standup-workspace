@@ -8,7 +8,7 @@
     "dev:backend": "cd backend && uvicorn app.main:app --reload --port 8000",
     "build:frontend": "cd frontend && npm run build",
     "typecheck": "cd frontend && npx tsc --noEmit",
-    "lint": "cd frontend && npx eslint . --ext .ts,.tsx || true",
+    "lint": "cd frontend && npx eslint . --ext .ts,.tsx",
     "test:e2e": "npx playwright test",
     "test:e2e:webkit": "npx playwright test --project=webkit",
     "test:e2e:mobile": "npx playwright test --project=\"Mobile Safari\" --project=\"Mobile Chrome\"",
