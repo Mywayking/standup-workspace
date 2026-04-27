@@ -64,3 +64,254 @@ textarea:focus-visible {
   transform: translateY(-4px);
   transition: transform 0.2s;
 }
+
+/* === 创作工作台布局 === */
+
+/* 三栏工作台容器 */
+.workspace-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .workspace-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 左侧会话记录面板 */
+.workspace-left {
+  width: 280px;
+  position: sticky;
+  top: 80px;
+}
+
+@media (max-width: 1024px) {
+  .workspace-left {
+    width: 100%;
+    position: static;
+  }
+}
+
+/* 主创作区 */
+.workspace-center {
+  min-width: 0;
+}
+
+/* 右侧状态卡（折叠式）*/
+.workspace-right {
+  width: 220px;
+  position: sticky;
+  top: 80px;
+}
+
+@media (max-width: 1280px) {
+  .workspace-right {
+    display: none;
+  }
+}
+
+/* 右侧折叠状态卡 */
+.status-collapsed {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.status-collapsed:hover {
+  border-color: #d1d5db;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.status-expanded {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 16px;
+}
+
+/* 卡片入口区 */
+.entry-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 1120px;
+  margin: 0 auto;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .entry-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+}
+
+/* 流程导航条（紧凑型） */
+.flow-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.flow-bar-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s;
+  cursor: pointer;
+}
+
+.flow-bar-step:hover {
+  opacity: 0.85;
+}
+
+.flow-bar-step.active {
+  background: #2563eb;
+  color: white;
+}
+
+.flow-bar-step.past {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.flow-bar-step.future {
+  background: #f3f4f6;
+  color: #9ca3af;
+}
+
+.flow-bar-arrow {
+  color: #d1d5db;
+  font-size: 12px;
+  user-select: none;
+}
+
+/* 主输入区强化 */
+.input-area {
+  position: relative;
+}
+
+.input-area-textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: 20px 24px;
+  font-size: 16px;
+  line-height: 1.7;
+  border: 2px solid #e5e7eb;
+  border-radius: 16px;
+  outline: none;
+  resize: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background: white;
+}
+
+.input-area-textarea:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+}
+
+.input-area-textarea::placeholder {
+  color: #9ca3af;
+}
+
+/* 保存状态条 */
+.save-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: #f9fafb;
+  border-radius: 10px;
+  border: 1px solid #f3f4f6;
+  margin-bottom: 12px;
+}
+
+.save-status-source {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.save-status-source strong {
+  color: #374151;
+}
+
+.save-status-time {
+  font-size: 12px;
+  color: #10b981;
+  font-weight: 500;
+}
+
+/* CTA 按钮强化 */
+.cta-button {
+  width: 100%;
+  padding: 16px 24px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 14px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.cta-button.primary {
+  background: #2563eb;
+  color: white;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
+.cta-button.primary:hover {
+  background: #1d4ed8;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+  transform: translateY(-1px);
+}
+
+.cta-button.primary:active {
+  transform: translateY(0);
+}
+
+.cta-button:disabled {
+  background: #f3f4f6;
+  color: #9ca3af;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* 字数提示行动化 */
+.char-count-hint {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.char-count-hint.ok {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.char-count-hint.low {
+  background: #fef9c3;
+  color: #a16207;
+}
+
+.char-count-hint.empty {
+  background: #f3f4f6;
+  color: #9ca3af;
+}

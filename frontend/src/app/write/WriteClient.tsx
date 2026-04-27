@@ -1249,32 +1249,42 @@ export default function WritePage({ initialText, sourcePath, onClearPending, onR
               <span>试试示例段子</span>
             </button>
 
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            {/* Save status bar + input */}
+            <div className="input-area">
+              {/* Save status indicator */}
+              {hasResult && stream.result && (
+                <div className="save-status-bar">
+                  <span className="save-status-source">
+                    当前来源：<strong>{sourcePath && sourcePath.length > 0 ? sourcePath[sourcePath.length - 1] : '改稿'}</strong>
+                  </span>
+                  <span className="save-status-time">✓ 已自动保存 · 刚刚</span>
+                </div>
+              )}
+
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <textarea
                 value={inputText}
                 onChange={(e) => { setInputText(e.target.value); setContentWarning(checkContentQuality(e.target.value)); }}
                 placeholder="把你不确定好不好笑的段子贴进来"
-                className="w-full px-4 sm:px-5 py-3 sm:py-4 text-base text-gray-700 placeholder-gray-300 resize-none outline-none min-h-48 sm:min-h-64"
+                className="input-area-textarea"
                 style={{ fontFamily: "inherit" }}
                 disabled={isStreaming}
               />
               <div className="flex items-center justify-between px-5 py-3 border-t border-gray-50">
-                <span className={`text-xs ${charCount < 20 ? "text-gray-400" : "text-gray-500"}`}>
+                <span className={`char-count-hint ${charCount < 20 ? (charCount > 0 ? 'low' : 'empty') : 'ok'}`}>
                   {charCount} 字
-                  {charCount > 0 && charCount < 20 && <span className="ml-1 text-orange-400">（至少20字）</span>}
+                  {charCount > 0 && charCount < 20 && <span>（还差 {20 - charCount} 个字，随便写一句生活观察也可以开始）</span>}
+                  {charCount >= 20 && <span>✓ 可以开始</span>}
                 </span>
               </div>
             </div>
+            </div>
 
-            {/* 1.2 CTA 按钮 */}
+            {/* CTA 按钮 */}
             <button
               onClick={handleAnalyze}
               disabled={!canAnalyze || isStreaming}
-              className={`w-full py-4 rounded-xl text-base font-semibold transition-all flex items-center justify-center gap-2 ${
-                canAnalyze && !isStreaming
-                  ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
-                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
-              }`}
+              className={`cta-button ${canAnalyze && !isStreaming ? 'primary' : ''}`}
             >
               {isStreaming ? (
                 <>

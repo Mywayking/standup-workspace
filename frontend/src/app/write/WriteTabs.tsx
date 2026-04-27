@@ -19,9 +19,17 @@ const TAB_LABELS: Record<Tab, string> = {
   rewrite: "改稿",
 };
 
+// Compact step flow indicators per tab
+const TAB_STEP_DESC: Record<Tab, string> = {
+  premise: "素材 → 前提",
+  joke_to_premise: "梗 → 前提",
+  angles: "前提 → 角度",
+  rewrite: "草稿 → 成品",
+};
+
 function WriteTabsInner() {
   const [activeTab, setActiveTab] = useState<Tab>("premise");
-  const { session, appendRewriteVersion, initSession, setHandoffCallback, addCardEnsuringSession } = useWorkflow();
+  const { session, appendRewriteVersion, setHandoffCallback, addCardEnsuringSession } = useWorkflow();
 
   const TASK_CARDS = [
     {
@@ -54,14 +62,12 @@ function WriteTabsInner() {
     },
   ];
 
-  // Pending data from cross-tab navigation
   const [pendingPremise, setPendingPremise] = useState<{ text: string; sourcePath: string[] } | null>(null);
   const [pendingAngle, setPendingAngle] = useState<{ text: string; sourcePath: string[] } | null>(null);
   const [pendingRewrite, setPendingRewrite] = useState<{ text: string; sourcePath: string[] } | null>(null);
 
   const { toast } = useToast();
 
-  // Centralized handoff: set pending state + navigate to target tab
   const handleHandoff = (targetType: CardType, content: string, sourcePath: string[]) => {
     const label: Record<CardType, string> = {
       source: "素材",
@@ -88,12 +94,10 @@ function WriteTabsInner() {
     }
   };
 
-  // Register handoff callback with WorkflowContext (used by SessionPanel)
   useEffect(() => {
     setHandoffCallback(handleHandoff);
   }, [setHandoffCallback]);
 
-  // Also handle internal tab action buttons
   const handleAction = (action: string, data?: string, sourcePathArg?: string[]) => {
     if (action === "go-angles" && data !== undefined) {
       setPendingAngle({ text: data, sourcePath: [...(sourcePathArg || []), "找角度"] });
@@ -109,7 +113,6 @@ function WriteTabsInner() {
     }
   };
 
-  // Ensure session exists before saving; update sourceInput to actual user input
   const safeHandleResultDone = (
     type: "premise" | "angles" | "rewrite" | "joke_to_premise",
     content: string,
@@ -133,12 +136,13 @@ function WriteTabsInner() {
     }
   };
 
+  // Step mapping for the flow bar
   const STEPS = ["素材", "前提", "角度", "改稿"] as const;
   const TAB_TO_STEP: Record<string, number> = {
     premise: 1,
+    joke_to_premise: 0, // side entry, shows inline
     angles: 2,
     rewrite: 3,
-    joke_to_premise: -1, // side entry
   };
   const activeStep = TAB_TO_STEP[activeTab] ?? -1;
 
@@ -150,14 +154,25 @@ function WriteTabsInner() {
     }
   };
 
+  // Clear pending state when switching tabs
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    if (tab !== "premise") setPendingPremise(null);
+    if (tab !== "angles") setPendingAngle(null);
+    if (tab !== "rewrite") setPendingRewrite(null);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Main Flow Guidance */}
-      <div className="bg-white border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 py-2.5">
-          <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide">
-            <span className="text-xs text-gray-400 shrink-0">推荐流程：</span>
-            <div className="flex items-center gap-1 shrink-0">
+
+      {/* ── UNIFIED HEADER: title + flow bar + tabs ── */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4">
+          {/* Title row */}
+          <div className="flex items-center justify-between py-3 border-b border-gray-100">
+            <h1 className="text-base font-bold text-gray-800">喜剧分析工作台</h1>
+            {/* Compact flow bar */}
+            <div className="flex items-center gap-1">
               {STEPS.map((step, idx) => {
                 const isActive = idx === activeStep;
                 const isPast = idx < activeStep;
@@ -178,32 +193,20 @@ function WriteTabsInner() {
                 );
               })}
             </div>
-            {activeTab !== "joke_to_premise" && (
-              <span className="text-xs text-gray-400 shrink-0 hidden sm:inline">| 已有一句梗？试试「梗写前提」</span>
-            )}
           </div>
-        </div>
-      </div>
 
-      {/* Tab Bar */}
-      <div className="bg-white border-b border-gray-200 sticky top-[56px] z-10">
-        <div className="max-w-7xl mx-auto px-4">
+          {/* Tab bar */}
           <div className="flex gap-1 overflow-x-auto scrollbar-hide">
             {([
-              { key: "premise", label: "提炼前提", desc: "素材 → 前提" },
-              { key: "joke_to_premise", label: "梗写前提", desc: "梗 → 前提" },
-              { key: "angles", label: "找角度", desc: "前提 → 角度" },
-              { key: "rewrite", label: "改稿", desc: "草稿 → 成品" },
+              { key: "premise", label: "提炼前提", desc: TAB_STEP_DESC.premise },
+              { key: "joke_to_premise", label: "梗写前提", desc: TAB_STEP_DESC.joke_to_premise },
+              { key: "angles", label: "找角度", desc: TAB_STEP_DESC.angles },
+              { key: "rewrite", label: "改稿", desc: TAB_STEP_DESC.rewrite },
             ] as const).map(({ key, label, desc }) => (
               <button
                 key={key}
-                onClick={() => {
-                  setActiveTab(key);
-                  if (key !== "premise") setPendingPremise(null);
-                  if (key !== "angles") setPendingAngle(null);
-                  if (key !== "rewrite") setPendingRewrite(null);
-                }}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex flex-col items-start gap-0.5 ${
+                onClick={() => handleTabChange(key)}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex flex-col items-start gap-0.5 shrink-0 ${
                   activeTab === key
                     ? "border-blue-600 text-blue-700"
                     : "border-transparent text-gray-500 hover:text-gray-700"
@@ -217,10 +220,10 @@ function WriteTabsInner() {
         </div>
       </div>
 
-      {/* Task Entry Cards — only show when no active session (empty state) */}
+      {/* ── TASK ENTRY CARDS (only when no active session) ── */}
       {session === null && (
-        <div className="mb-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="max-w-7xl mx-auto px-4 pt-5">
+          <div className="entry-cards-grid">
             {TASK_CARDS.map((card) => (
               <button
                 key={card.key}
@@ -240,16 +243,17 @@ function WriteTabsInner() {
         </div>
       )}
 
-      {/* Main Content: [Session Panel | Tab Content] */}
+      {/* ── MAIN CONTENT: three-column workspace ── */}
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Left: Session Panel — hidden on mobile, shown as toggle on lg+ */}
-          <div className="hidden lg:block w-72 shrink-0">
+        <div className="workspace-layout">
+
+          {/* Left: Session Panel */}
+          <div className="workspace-left">
             <WorkflowSessionPanel />
           </div>
 
           {/* Center: Tab Content */}
-          <div className="flex-1 min-w-0">
+          <div className="workspace-center">
             <ErrorBoundary>
               {activeTab === "premise" && (
                 <PremiseTab
@@ -293,8 +297,91 @@ function WriteTabsInner() {
               )}
             </ErrorBoundary>
           </div>
+
+          {/* Right: Collapsible status card */}
+          <div className="workspace-right">
+            <StatusToggleCard activeTab={activeTab} session={session} />
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Collapsible Status Card ───────────────────────────────────────────────────
+
+function StatusToggleCard({
+  activeTab,
+  session,
+}: {
+  activeTab: Tab;
+  session: ReturnType<typeof useWorkflow>["session"];
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className={expanded ? "status-expanded" : "status-collapsed"} onClick={() => setExpanded(v => !v)}>
+      {!expanded ? (
+        // Collapsed: just a help icon with current step
+        <div className="flex flex-col items-center gap-2">
+          <span className="text-2xl">💡</span>
+          <span className="text-xs text-gray-500">{TAB_LABELS[activeTab]}</span>
+          <span className="text-xs text-gray-300">点击展开</span>
+        </div>
+      ) : (
+        // Expanded: dynamic status
+        <div onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-bold text-gray-800">状态</p>
+            <button
+              onClick={() => setExpanded(false)}
+              className="text-gray-400 hover:text-gray-600 text-xs"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Current step */}
+          <div className="mb-3">
+            <p className="text-xs text-gray-400 mb-1">当前工具</p>
+            <p className="text-sm font-medium text-gray-700">{TAB_LABELS[activeTab]}</p>
+          </div>
+
+          {/* Save status */}
+          {session ? (
+            <div className="mb-3">
+              <p className="text-xs text-gray-400 mb-1">保存状态</p>
+              <p className="text-xs text-green-600 font-medium">
+                ✓ 已保存 · {session.cards.length} 个结果
+              </p>
+            </div>
+          ) : (
+            <div className="mb-3">
+              <p className="text-xs text-gray-400 mb-1">保存状态</p>
+              <p className="text-xs text-gray-400">未创建会话</p>
+            </div>
+          )}
+
+          {/* Next step hint */}
+          {activeTab !== "rewrite" && (
+            <div className="pt-2 border-t border-gray-100">
+              <p className="text-xs text-gray-400 mb-1">下一步</p>
+              <p className="text-xs text-blue-600">
+                {activeTab === "premise" && "→ 找角度"}
+                {activeTab === "joke_to_premise" && "→ 找角度"}
+                {activeTab === "angles" && "→ 改稿"}
+              </p>
+            </div>
+          )}
+
+          {/* Help text */}
+          <div className="pt-2 border-t border-gray-100 mt-2">
+            <p className="text-xs text-gray-400 leading-relaxed">
+              输入内容后 AI 自动分析，完成后可保存到左侧会话
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
