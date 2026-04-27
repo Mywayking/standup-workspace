@@ -62,7 +62,7 @@ export default function ModelSettings() {
         body: JSON.stringify({
           provider,
           model: effectiveModel,
-          base_url: baseUrl || selectedProvider?.defaultBaseUrl || "",
+          base_url: provider === "openai_compatible" ? baseUrl : null,
           api_key: apiKeyInput,
         }),
       });
@@ -114,7 +114,7 @@ export default function ModelSettings() {
         body: JSON.stringify({
           provider,
           model: effectiveModel,
-          base_url: baseUrl || selectedProvider?.defaultBaseUrl || "",
+          base_url: provider === "openai_compatible" ? baseUrl : null,
           api_key: apiKeyInput || undefined,
           enabled: true,
           fallback_to_system: fallbackToSystem,
@@ -216,19 +216,18 @@ export default function ModelSettings() {
             )}
           </div>
 
-          {/* Base URL */}
-          <div className="space-y-1">
-            <label className="text-sm font-medium">API Base URL</label>
-            <input
-              value={baseUrl}
-              onChange={e => setBaseUrl(e.target.value)}
-              placeholder={selectedProvider?.defaultBaseUrl || "https://api.example.com/v1"}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            {selectedProvider && !baseUrl && (
-              <p className="text-xs text-gray-400">默认：{selectedProvider.defaultBaseUrl}</p>
-            )}
-          </div>
+          {/* Base URL - 仅自定义供应商显示 */}
+          {provider === "openai_compatible" && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">API Base URL</label>
+              <input
+                value={baseUrl}
+                onChange={e => setBaseUrl(e.target.value)}
+                placeholder="https://api.example.com/v1"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
 
           {/* API Key */}
           <div className="space-y-1">
