@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { useWorkflow, type WorkflowCard, type CardType, type WorkflowSession } from "./WorkflowContext";
 import { getWorkflowCardSummary } from "@/lib/workflowSummary";
 import { canContinueCard, canContinueSession, getValidCardCount } from "@/lib/workflowHistory";
+import { WORKFLOW_ACTIONS, useWorkflowActions } from "@/lib/workflowActions";
 import { useAuth } from "./AuthContext";
 import { useToast } from "@/components/Toast";
 
@@ -30,13 +31,6 @@ const CARD_TYPE_ICONS: Record<CardType, string> = {
   joke_to_premise: "🎯",
 };
 
-const SEND_TARGETS: { label: string; type: CardType }[] = [
-  { label: "→ 提炼前提", type: "premise" },
-  { label: "→ 梗写前提", type: "joke_to_premise" },
-  { label: "→ 找角度", type: "angles" },
-  { label: "→ 改稿", type: "rewrite" },
-];
-
 function esc(s: unknown): string {
   if (s == null) return "";
   return String(s)
@@ -52,10 +46,12 @@ function CardDetailModal({
   card,
   onClose,
   onContinue,
+  onCopy,
 }: {
   card: WorkflowCard;
   onClose: () => void;
   onContinue?: (target: CardType, content: string, sourcePath: string[]) => void;
+  onCopy?: (content: string) => void;
 }) {
   const raw = card.rawData as Record<string, unknown>;
   const type = card.type;
@@ -73,21 +69,31 @@ function CardDetailModal({
     };
   }, [onClose]);
 
-  const actionMap: Record<string, { label: string; target: CardType | null } | null> = {
-    premise: { label: "继续找角度", target: "angles" },
-    joke_to_premise: { label: "继续找角度", target: "angles" },
-    angles: { label: "继续改稿", target: "rewrite" },
-    rewrite: null,
-  };
-  const action = actionMap[type];
+  // 详情弹窗的继续操作：前提/角度 → 改稿
+  const continueAction =
+    (type === "premise" || type === "joke_to_premise" || type === "angles") && onContinue
+      ? {
+          label: type === "angles" ? "继续改稿" : "继续找角度",
+          target: type === "angles" ? "rewrite" : ("angles" as CardType),
+        }
+      : null;
+
+  // 获取可复制内容
+  const copyableContent = (() => {
+    if ((raw?.recommendation as any)?.text) return (raw.recommendation as any).text;
+    if ((raw?.premise_candidates as any[])?.[0]?.text) return (raw.premise_candidates as any[])[0].text;
+    if ((raw?.angles as any[])?.[0]?.angle) return (raw.angles as any[])[0].angle;
+    if ((raw?.angles as any[])?.[0]?.name) return (raw.angles as any[])[0].name;
+    return card.content;
+  })();
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-[1000] p-4"
+      className="fixed inset-0 z-[1000] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-[760px] max-h-[85vh] flex flex-col overflow-hidden"
+        className="fixed left-1/2 top-1/2 z-[1001] max-h-[85vh] w-[min(760px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -327,25 +333,32 @@ function CardDetailModal({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-gray-100 shrink-0 flex justify-between items-center">
-          <div />
+        <div className="px-5 py-4 border-t border-gray-100 shrink-0 flex justify-end gap-2 items-center">
+          {copyableContent && onCopy && (
+            <button
+              onClick={() => onCopy(copyableContent)}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors"
+            >
+              复制
+            </button>
+          )}
+          {continueAction && onContinue && (
+            <button
+              onClick={() => {
+                onContinue(continueAction.target, copyableContent, card.sourcePath);
+                onClose();
+              }}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              {continueAction.label}
+            </button>
+          )}
           <button
             onClick={onClose}
             className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors"
           >
             关闭
           </button>
-          {action && onContinue && (
-            <button
-              onClick={() => {
-                onContinue(action.target!, card.content, card.sourcePath);
-                onClose();
-              }}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              {action.label}
-            </button>
-          )}
         </div>
       </div>
     </div>
@@ -363,35 +376,23 @@ function CardItem({
   isLatest?: boolean;
   onView: (card: WorkflowCard) => void;
 }) {
-  const { deleteCard, handoff } = useWorkflow();
+  const { deleteCard } = useWorkflow();
   const [showMore, setShowMore] = useState(false);
+  const { executeAction } = useWorkflowActions();
 
-  const handleSendTo = (targetType: CardType) => {
-    const myLabel = CARD_TYPE_LABELS[card.type];
-    const newPath = card.sourcePath
-      ? (card.sourcePath[card.sourcePath.length - 1] === myLabel
-          ? card.sourcePath
-          : [...card.sourcePath, CARD_TYPE_LABELS[targetType]])
-      : [CARD_TYPE_LABELS[targetType]];
-    handoff(targetType, card.content, newPath);
+  const config = WORKFLOW_ACTIONS[card.type];
+  const summary = getWorkflowCardSummary(card);
+
+  const handlePrimaryClick = () => {
+    if (!config?.primary) return;
+    executeAction(config.primary, card, deleteCard);
     setShowMore(false);
   };
 
-  const getPrimaryTarget = (): CardType | null => {
-    if (card.type === "premise" || card.type === "joke_to_premise") return "angles";
-    if (card.type === "angles") return "rewrite";
-    return null;
+  const handleMoreAction = (action: typeof config.more[number]) => {
+    executeAction(action, card, deleteCard);
+    setShowMore(false);
   };
-
-  const primaryTarget = getPrimaryTarget();
-  const primaryLabel = primaryTarget
-    ? SEND_TARGETS.find((t) => t.type === primaryTarget)?.label
-    : null;
-  const otherTargets = SEND_TARGETS.filter(
-    (t) => t.type !== card.type && t.type !== primaryTarget
-  );
-
-  const summary = getWorkflowCardSummary(card);
 
   return (
     <div
@@ -467,16 +468,16 @@ function CardItem({
       )}
 
       {/* 按钮组 */}
-      {summary.primaryAction && (
+      {config?.primary && (
         <div className="flex items-center gap-1.5 mt-2">
           <button
-            onClick={() => handleSendTo(summary.primaryAction!.targetType)}
+            onClick={handlePrimaryClick}
             className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
           >
-            {summary.primaryAction!.label}
+            {config.primary.label}
           </button>
 
-          {otherTargets.length > 0 && (
+          {config.more.length > 0 && (
             <div className="relative">
               <button
                 onClick={() => setShowMore(!showMore)}
@@ -485,14 +486,18 @@ function CardItem({
                 更多 ▾
               </button>
               {showMore && (
-                <div className="absolute bottom-full mb-1 right-0 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-10 min-w-[120px]">
-                  {otherTargets.map((target) => (
+                <div className="absolute bottom-full mb-1 right-0 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-20 min-w-[120px]">
+                  {config.more.map((action, idx) => (
                     <button
-                      key={target.type}
-                      onClick={() => handleSendTo(target.type)}
-                      className="w-full text-left text-xs px-3 py-1.5 text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                      key={idx}
+                      onClick={() => handleMoreAction(action)}
+                      className={`w-full text-left text-xs px-3 py-1.5 transition-colors ${
+                        action.danger
+                          ? "text-red-500 hover:bg-red-50"
+                          : "text-gray-600 hover:bg-blue-50 hover:text-blue-700"
+                      }`}
                     >
-                      {target.label}
+                      {action.label}
                     </button>
                   ))}
                 </div>
@@ -638,6 +643,7 @@ export default function WorkflowSessionPanel() {
   const { loggedIn } = useAuth();
   const [showHistory, setShowHistory] = useState(false);
   const [detailCard, setDetailCard] = useState<WorkflowCard | null>(null);
+  const { executeAction } = useWorkflowActions();
 
   if (!session) {
     return <EmptyState />;
@@ -660,10 +666,21 @@ export default function WorkflowSessionPanel() {
     .map(([t, n]) => `${CARD_TYPE_ICONS[t as CardType]}${n}`)
     .join(" ");
 
+  const validCount = getValidCardCount(session);
+
   return (
     <>
       {detailCard && (
-        <CardDetailModal card={detailCard} onClose={() => setDetailCard(null)} onContinue={handoff} />
+        <CardDetailModal
+          card={detailCard}
+          onClose={() => setDetailCard(null)}
+          onContinue={handoff}
+          onCopy={(content) => {
+            navigator.clipboard.writeText(content).then(() => {
+              toast("已复制到剪贴板");
+            });
+          }}
+        />
       )}
 
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
@@ -672,7 +689,7 @@ export default function WorkflowSessionPanel() {
           <div>
             <p className="text-sm font-bold text-gray-800">创作记录</p>
             <p className="text-xs text-gray-400">
-              {session.cards.length} 个结果
+              {validCount > 0 ? `${validCount} 个结果` : '无有效结果'}
               {typeSummary ? ` · ${typeSummary}` : ""}
             </p>
             {session.cards.length > 0 && (
