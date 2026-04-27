@@ -19,6 +19,7 @@ class LLMRequest(BaseModel):
     timeout_seconds: float = 25.0
     candidate_models: list[str] | None = None  # 覆盖默认模型链
     request_id: str = ""
+    user_id: str | None = None  # 用于解析用户自定义模型配置
 
 
 class ModelAttempt(BaseModel):

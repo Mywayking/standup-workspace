@@ -4,12 +4,14 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "@/lib/api";
 import Link from "next/link";
+import ModelSettings from "@/components/settings/ModelSettings";
 
 export default function ProfileSettingsPage() {
   const { user, loggedIn, loading: authLoading, refreshUser } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [activeTab, setActiveTab] = useState<"profile" | "model">("profile");
   const [bio, setBio] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -99,13 +101,44 @@ export default function ProfileSettingsPage() {
         </Link>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          {/* Header */}
-          <div className="px-6 py-5 border-b border-gray-100">
-            <h1 className="text-xl font-semibold text-gray-900">账号设置</h1>
-            <p className="text-sm text-gray-500 mt-1">管理你的个人资料</p>
+          {/* Tabs */}
+          <div className="px-6 pt-4">
+            <div className="flex gap-1 border-b border-gray-100">
+              <button
+                onClick={() => setActiveTab("profile")}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                  activeTab === "profile"
+                    ? "border-indigo-600 text-indigo-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                个人资料
+              </button>
+              <button
+                onClick={() => setActiveTab("model")}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                  activeTab === "model"
+                    ? "border-indigo-600 text-indigo-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                AI 模型
+              </button>
+            </div>
           </div>
 
-          <form onSubmit={handleSave} className="px-6 py-5 space-y-5">
+          {/* Header */}
+          <div className="px-6 py-5 border-b border-gray-100">
+            <h1 className="text-xl font-semibold text-gray-900">
+              {activeTab === "profile" ? "个人资料" : "AI 模型设置"}
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              {activeTab === "profile" ? "管理你的个人资料" : "管理你的模型供应商和 API Key"}
+            </p>
+          </div>
+
+          {activeTab === "profile" && (
+            <form onSubmit={handleSave} className="px-6 py-5 space-y-5">
             {/* Avatar preview */}
             <div className="flex justify-center">
               {avatarUrl ? (
@@ -204,6 +237,13 @@ export default function ProfileSettingsPage() {
               {saving ? "保存中..." : "保存"}
             </button>
           </form>
+          )}
+
+          {activeTab === "model" && (
+            <div className="px-6 py-5">
+              <ModelSettings />
+            </div>
+          )}
         </div>
       </div>
     </div>

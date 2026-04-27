@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useCallback, useEffect, ReactNode 
 interface Toast {
   id: string;
   message: string;
-  type: "success" | "error" | "info";
+  type: "success" | "error" | "info" | "warning";
 }
 
 interface ToastContextValue {
@@ -45,6 +45,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
   }, [toast.id, onRemove]);
 
   const bg = toast.type === "error" ? "bg-red-50 border-red-200 text-red-700"
+    : toast.type === "warning" ? "bg-yellow-50 border-yellow-200 text-yellow-700"
     : toast.type === "info" ? "bg-blue-50 border-blue-200 text-blue-700"
     : "bg-white border-gray-200 text-gray-700";
 

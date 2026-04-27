@@ -13,12 +13,13 @@ import json
 import logging
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from ..config import settings
 from ..llm import get_stream_gateway, LLMRequest, LLMMessage
 from ..utils.logging import new_request_id, set_request_context
+from .auth import _current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/write", tags=["write-stream"])
@@ -186,9 +187,14 @@ JOKE_TO_PREMISE_SYSTEM = """
 
 # ─── Route helpers ──────────────────────────────────────────────────────────────
 
-async def _stream_llm(scene: str, system: str, user: str, request_id: str) -> AsyncGenerator[str, None]:
-    """通用 stream_gateway 调用 generator。"""
-    gateway = get_stream_gateway()
+async def _stream_llm(scene: str, system: str, user: str, request_id: str, user_id: str | None = None) -> AsyncGenerator[str, None]:
+    """通用 stream_gateway 调用 generator。
+    
+    user_id 非空时会解析用户自填模型配置，优先使用。
+    """
+    from .user_model_resolver import resolve_user_model_runtime
+    user_runtime = resolve_user_model_runtime(user_id) if user_id else None
+    gateway = get_stream_gateway(user_model_runtime=user_runtime)
     async for chunk in gateway.generate(LLMRequest(
         scene=scene,
         messages=[
@@ -198,6 +204,7 @@ async def _stream_llm(scene: str, system: str, user: str, request_id: str) -> As
         temperature=1.0,
         stream=True,
         request_id=request_id,
+        user_id=user_id,
     )):
         yield chunk
 
@@ -205,8 +212,11 @@ async def _stream_llm(scene: str, system: str, user: str, request_id: str) -> As
 # ─── Routes ────────────────────────────────────────────────────────────────────
 
 @router.post("/premise/stream")
-async def premise_stream(req: dict):
+async def premise_stream(req: dict, request: Request):
     """提炼前提（流式）— 统一端点"""
+    from ..database import SessionLocal
+    user = _current_user(request, SessionLocal())
+    user_id = str(user.ulid) if user else None
     text = req.get("text", "").strip()
     if len(text) < 5:
         raise HTTPException(400, "素材太短了（至少5字）")
@@ -217,15 +227,18 @@ async def premise_stream(req: dict):
     user_prompt = f"素材：\n{text}\n\n请严格按JSON格式输出，不要输出任何Schema以外的文字。"
 
     return StreamingResponse(
-        _stream_llm("write_premise", PREMISE_SYSTEM, user_prompt, request_id),
+        _stream_llm("write_premise", PREMISE_SYSTEM, user_prompt, request_id, user_id),
         media_type="text/event-stream",
         headers=_COMMON_STREAM_HEADERS,
     )
 
 
 @router.post("/joke-to-premise/stream")
-async def joke_to_premise_stream(req: dict):
+async def joke_to_premise_stream(req: dict, request: Request):
     """梗写前提（流式）— 统一端点，单一 prompt"""
+    from ..database import SessionLocal
+    user = _current_user(request, SessionLocal())
+    user_id = str(user.ulid) if user else None
     text = req.get("text", "").strip()
     if len(text) < 3:
         raise HTTPException(400, "请输入一句完整的梗（至少3个字）")
@@ -241,15 +254,18 @@ async def joke_to_premise_stream(req: dict):
     user_prompt = f"分析这句梗：\n{text}\n\n{topic_hint}\n{style_hint}\n\n请严格按JSON格式输出。"
 
     return StreamingResponse(
-        _stream_llm("write_joke_to_premise", JOKE_TO_PREMISE_SYSTEM, user_prompt, request_id),
+        _stream_llm("write_joke_to_premise", JOKE_TO_PREMISE_SYSTEM, user_prompt, request_id, user_id),
         media_type="text/event-stream",
         headers=_COMMON_STREAM_HEADERS,
     )
 
 
 @router.post("/angles/stream")
-async def angles_stream(req: dict):
+async def angles_stream(req: dict, request: Request):
     """找角度（流式）— 统一端点"""
+    from ..database import SessionLocal
+    user = _current_user(request, SessionLocal())
+    user_id = str(user.ulid) if user else None
     premise = req.get("premise", "").strip()
     if len(premise) < 3:
         raise HTTPException(400, "输入的前提太短了（至少3个字）")
@@ -260,15 +276,18 @@ async def angles_stream(req: dict):
     user_prompt = f"前提：\n{premise}\n\n请严格按JSON格式输出，不要输出任何Schema以外的文字。"
 
     return StreamingResponse(
-        _stream_llm("write_angles", ANGLES_SYSTEM, user_prompt, request_id),
+        _stream_llm("write_angles", ANGLES_SYSTEM, user_prompt, request_id, user_id),
         media_type="text/event-stream",
         headers=_COMMON_STREAM_HEADERS,
     )
 
 
 @router.post("/rewrite/stream")
-async def rewrite_stream(req: dict):
+async def rewrite_stream(req: dict, request: Request):
     """改稿分析（流式）— 统一端点"""
+    from ..database import SessionLocal
+    user = _current_user(request, SessionLocal())
+    user_id = str(user.ulid) if user else None
     text = req.get("text", "").strip()
     if len(text) < 20:
         raise HTTPException(400, "段子内容太短了（至少20字）")
@@ -279,7 +298,7 @@ async def rewrite_stream(req: dict):
     user_prompt = f"段子内容：\n{text}\n\n用单口喜剧优秀编剧的视角进行深度分析，严格按Schema格式返回JSON，不要输出Schema以外任何文字。"
 
     return StreamingResponse(
-        _stream_llm("write_rewrite", REWRITE_SYSTEM, user_prompt, request_id),
+        _stream_llm("write_rewrite", REWRITE_SYSTEM, user_prompt, request_id, user_id),
         media_type="text/event-stream",
         headers=_COMMON_STREAM_HEADERS,
     )

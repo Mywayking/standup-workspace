@@ -303,6 +303,10 @@ class CreatorProfile(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+# 确保 UserModelConfig 表被创建（延迟导入避免循环）
+from .models.user_model_config import UserModelConfig  # noqa: F401
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
