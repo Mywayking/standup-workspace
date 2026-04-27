@@ -183,13 +183,14 @@ interface WorkflowContextValue {
   addCard: (card: Omit<WorkflowCard, "id" | "createdAt">) => string;
   addCardEnsuringSession: (sourceInput: string, card: Omit<WorkflowCard, "id" | "createdAt">) => string;
   deleteCard: (cardId: string) => void;
-  appendRewriteVersion: (rewriteContent: string, rawData: unknown, sourcePath: string[]) => string;
+  appendRewriteVersion: (rewriteContent: string, rawData: unknown, sourcePath: string[], sourceInput?: string) => string;
   // Handoff: SessionPanel calls this to trigger WriteTabs' pending fill + tab switch
   handoff: (type: CardType, content: string, sourcePath: string[]) => void;
   setHandoffCallback: (fn: (type: CardType, content: string, sourcePath: string[]) => void) => void;
   sessions: WorkflowSession[];
   restoreSession: (id: string) => void;
   deleteSession: (id: string) => void;
+  setSession: React.Dispatch<React.SetStateAction<WorkflowSession | null>>;
   cloudSynced: boolean; // true if user is logged in
 }
 
@@ -345,13 +346,20 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const appendRewriteVersion = useCallback(
-    (rewriteContent: string, rawData: unknown, sourcePath: string[]): string => {
+    (rewriteContent: string, rawData: unknown, sourcePath: string[], sourceInput: string = "改稿"): string => {
       const id = genId("card");
       const now = new Date().toISOString();
 
       setSession((prev) => {
-        if (!prev) return prev;
-        const rewriteCards = prev.cards.filter((c) => c.type === "rewrite");
+        const session = prev ?? {
+          id: genId("session"),
+          sourceInput,
+          currentStep: "source" as const,
+          cards: [],
+          createdAt: now,
+          updatedAt: now,
+        };
+        const rewriteCards = session.cards.filter((c) => c.type === "rewrite");
         const maxVersion = rewriteCards.reduce((max, c) => Math.max(max, c.version ?? 1), 0);
         const newVersion = maxVersion + 1;
 
@@ -367,7 +375,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
           createdAt: now,
         };
 
-        return { ...prev, cards: [...prev.cards, card], updatedAt: now };
+        return { ...session, cards: [...session.cards, card], updatedAt: now };
       });
 
       return id;
@@ -410,6 +418,8 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     [loggedIn, user]
   );
 
+  const cloudSynced = loggedIn;
+
   return (
     <WorkflowContext.Provider
       value={{
@@ -418,8 +428,8 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
         addCard, addCardEnsuringSession, deleteCard,
         appendRewriteVersion,
         handoff, setHandoffCallback,
-        sessions, restoreSession, deleteSession,
-        cloudSynced: loggedIn,
+        sessions, restoreSession, deleteSession, setSession,
+        cloudSynced,
       }}
     >
       {children}

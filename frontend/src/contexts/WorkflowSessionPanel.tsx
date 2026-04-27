@@ -1,6 +1,8 @@
 "use client";
 import React, { useState } from "react";
 import { useWorkflow, type WorkflowCard, type CardType } from "./WorkflowContext";
+import { useAuth } from "./AuthContext";
+import { useToast } from "@/components/Toast";
 
 const CARD_TYPE_LABELS: Record<CardType, string> = {
   source: "原始素材",
@@ -47,20 +49,43 @@ function esc(s: unknown): string {
 function CardDetailModal({
   card,
   onClose,
+  onContinue,
 }: {
   card: WorkflowCard;
   onClose: () => void;
+  onContinue?: (target: CardType, content: string, sourcePath: string[]) => void;
 }) {
   const raw = card.rawData as Record<string, unknown>;
   const type = card.type;
 
+  // ESC to close + body scroll lock
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  const actionMap: Record<string, { label: string; target: CardType | null } | null> = {
+    premise: { label: "继续找角度", target: "angles" },
+    joke_to_premise: { label: "继续找角度", target: "angles" },
+    angles: { label: "继续改稿", target: "rewrite" },
+    rewrite: null,
+  };
+  const action = actionMap[type];
+
   return (
     <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-[1000] p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-[760px] max-h-[85vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -300,13 +325,25 @@ function CardDetailModal({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-gray-100 shrink-0 flex justify-end">
+        <div className="px-5 py-4 border-t border-gray-100 shrink-0 flex justify-between items-center">
+          <div />
           <button
             onClick={onClose}
             className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors"
           >
             关闭
           </button>
+          {action && onContinue && (
+            <button
+              onClick={() => {
+                onContinue(action.target!, card.content, card.sourcePath);
+                onClose();
+              }}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              {action.label}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -382,10 +419,10 @@ function CardItem({
           {/* P1-1: 查看按钮 */}
           <button
             onClick={() => onView(card)}
-            className="text-gray-300 hover:text-blue-500 text-xs shrink-0 transition-colors px-1"
+            className="text-gray-300 hover:text-blue-500 text-xs shrink-0 transition-colors px-1 flex items-center gap-0.5"
             title="查看详情"
           >
-            👁
+            <span>👁</span><span>查看</span>
           </button>
           <button
             onClick={() => deleteCard(card.id)}
@@ -527,6 +564,7 @@ function HistorySessionItem({
 
 function EmptyState() {
   const { sessions, restoreSession, cloudSynced } = useWorkflow();
+  const { loggedIn } = useAuth();
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
@@ -543,7 +581,9 @@ function EmptyState() {
       }`}>
         {cloudSynced
           ? "☁️ 记录已同步到账号"
-          : "📱 当前记录仅保存在本浏览器，登录后可同步到账号"}
+          : loggedIn
+            ? "📱 已保存到本机 · 云同步开发中"
+            : "📱 已保存到本机 · 登录后可同步"}
       </div>
 
       {sessions.length > 0 && (
@@ -568,8 +608,10 @@ function EmptyState() {
 // ─── Active Session Panel ────────────────────────────────────────────────────
 
 export default function WorkflowSessionPanel() {
-  const { session, resetSession, sessions, restoreSession, deleteSession, cloudSynced } =
+  const { session, resetSession, sessions, restoreSession, deleteSession, setSession, handoff, cloudSynced } =
     useWorkflow();
+  const { toast } = useToast();
+  const { loggedIn } = useAuth();
   const [showHistory, setShowHistory] = useState(false);
   const [detailCard, setDetailCard] = useState<WorkflowCard | null>(null);
 
@@ -597,14 +639,14 @@ export default function WorkflowSessionPanel() {
   return (
     <>
       {detailCard && (
-        <CardDetailModal card={detailCard} onClose={() => setDetailCard(null)} />
+        <CardDetailModal card={detailCard} onClose={() => setDetailCard(null)} onContinue={handoff} />
       )}
 
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-1">
           <div>
-            <p className="text-sm font-bold text-gray-800">当前创作会话</p>
+            <p className="text-sm font-bold text-gray-800">创作记录</p>
             <p className="text-xs text-gray-400">
               {session.cards.length} 个结果
               {typeSummary ? ` · ${typeSummary}` : ""}
@@ -620,13 +662,21 @@ export default function WorkflowSessionPanel() {
               onClick={() => setShowHistory(!showHistory)}
               className="text-xs text-gray-400 hover:text-gray-600"
             >
-              {showHistory ? "收起历史" : `历史(${sessions.length})`}
+              {showHistory ? "收起历史" : `历史会话(${sessions.length})`}
             </button>
             <button
-              onClick={resetSession}
+              onClick={() => {
+                if (session.cards.length > 0) {
+                  resetSession();
+                  toast("当前会话已保存，可以开始新的创作");
+                } else {
+                  setSession(null);
+                  toast("已开始新的创作");
+                }
+              }}
               className="text-xs text-gray-400 hover:text-red-500 transition-colors"
             >
-              结束
+              保存并新建
             </button>
           </div>
         </div>
@@ -639,7 +689,9 @@ export default function WorkflowSessionPanel() {
         }`}>
           {cloudSynced
             ? "☁️ 记录已同步到账号"
-            : "📱 当前记录仅保存在本浏览器，登录后可同步到账号"}
+            : loggedIn
+              ? "📱 已保存到本机 · 云同步开发中"
+              : "📱 已保存到本机 · 登录后可同步"}
         </div>
 
         {/* 历史面板（可折叠）P1-2: 添加 30 条限制提示 */}

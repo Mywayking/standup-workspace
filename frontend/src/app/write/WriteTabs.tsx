@@ -121,7 +121,7 @@ function WriteTabsInner() {
     sourceInput?: string,
   ) => {
     if (type === "rewrite") {
-      appendRewriteVersion(content, rawData, sourcePath);
+      appendRewriteVersion(content, rawData, sourcePath, sourceInput);
     } else {
       const title = content.slice(0, 40) + (content.length > 40 ? "…" : "");
       addCardEnsuringSession(sourceInput || content.slice(0, 100), {
