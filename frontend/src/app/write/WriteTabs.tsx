@@ -217,26 +217,28 @@ function WriteTabsInner() {
         </div>
       </div>
 
-      {/* Task Entry Cards */}
-      <div className="mb-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {TASK_CARDS.map((card) => (
-            <button
-              key={card.key}
-              onClick={() => setActiveTab(card.tab)}
-              className={`bg-white rounded-xl border p-4 text-left transition-all hover:shadow-md ${
-                activeTab === card.tab
-                  ? "border-blue-400 ring-2 ring-blue-100"
-                  : "border-gray-200 hover:border-gray-300"
-              }`}
-            >
-              <div className="text-2xl mb-2">{card.icon}</div>
-              <div className="font-semibold text-gray-800 text-sm">{card.title}</div>
-              <div className="text-xs text-gray-400 mt-1">{card.desc}</div>
-            </button>
-          ))}
+      {/* Task Entry Cards — only show when no active session (empty state) */}
+      {session === null && (
+        <div className="mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {TASK_CARDS.map((card) => (
+              <button
+                key={card.key}
+                onClick={() => setActiveTab(card.tab)}
+                className={`bg-white rounded-xl border p-4 text-left transition-all hover:shadow-md ${
+                  activeTab === card.tab
+                    ? "border-blue-400 ring-2 ring-blue-100"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="text-2xl mb-2">{card.icon}</div>
+                <div className="font-semibold text-gray-800 text-sm">{card.title}</div>
+                <div className="text-xs text-gray-400 mt-1">{card.desc}</div>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main Content: [Session Panel | Tab Content] */}
       <div className="max-w-7xl mx-auto px-4 py-6">
