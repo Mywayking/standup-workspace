@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { useWorkflow, type WorkflowCard, type CardType } from "./WorkflowContext";
+import { getWorkflowCardSummary } from "@/lib/workflowSummary";
 import { useAuth } from "./AuthContext";
 import { useToast } from "@/components/Toast";
 
@@ -389,6 +390,8 @@ function CardItem({
     (t) => t.type !== card.type && t.type !== primaryTarget
   );
 
+  const summary = getWorkflowCardSummary(card);
+
   return (
     <div
       className={`p-3 rounded-xl border transition-all ${
@@ -402,7 +405,7 @@ function CardItem({
         <span className="text-sm shrink-0">{CARD_TYPE_ICONS[card.type]}</span>
         <div className="flex items-center flex-wrap gap-1 min-w-0 flex-1">
           <span className="text-xs font-medium text-gray-600 shrink-0">
-            {CARD_TYPE_LABELS[card.type]}
+            {summary.title}
           </span>
           {card.version && (
             <span className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded font-medium">
@@ -434,6 +437,11 @@ function CardItem({
         </div>
       </div>
 
+      {/* 副标题 */}
+      {summary.subtitle && (
+        <p className="text-xs text-gray-400 mb-1">{summary.subtitle}</p>
+      )}
+
       {/* 来源链 */}
       {card.sourcePath?.length > 0 && (
         <div className="mb-1.5">
@@ -443,18 +451,28 @@ function CardItem({
 
       {/* 内容预览 */}
       <p className="text-sm text-gray-800 line-clamp-3 leading-relaxed">
-        {card.content.slice(0, 100)}
-        {card.content.length > 100 ? "…" : ""}
+        {summary.body}
       </p>
 
+      {/* Tags */}
+      {summary.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {summary.tags.slice(0, 3).map((tag) => (
+            <span key={tag} className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* 按钮组 */}
-      {primaryTarget && (
+      {summary.primaryAction && (
         <div className="flex items-center gap-1.5 mt-2">
           <button
-            onClick={() => handleSendTo(primaryTarget)}
+            onClick={() => handleSendTo(summary.primaryAction!.targetType)}
             className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
           >
-            {primaryLabel}
+            {summary.primaryAction!.label}
           </button>
 
           {otherTargets.length > 0 && (

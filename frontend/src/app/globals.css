@@ -70,14 +70,27 @@ textarea:focus-visible {
 /* 三栏工作台容器 */
 .workspace-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 280px 1fr 220px;
   gap: 20px;
   align-items: start;
+}
+
+@media (max-width: 1280px) {
+  .workspace-layout {
+    grid-template-columns: 280px 1fr;
+  }
+  .workspace-right {
+    display: none;
+  }
 }
 
 @media (max-width: 1024px) {
   .workspace-layout {
     grid-template-columns: 1fr;
+  }
+  .workspace-left {
+    width: 100%;
+    position: static;
   }
 }
 
@@ -86,13 +99,6 @@ textarea:focus-visible {
   width: 280px;
   position: sticky;
   top: 80px;
-}
-
-@media (max-width: 1024px) {
-  .workspace-left {
-    width: 100%;
-    position: static;
-  }
 }
 
 /* 主创作区 */
