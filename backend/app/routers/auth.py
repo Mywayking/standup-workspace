@@ -221,6 +221,19 @@ def me(request: Request, db: Session = Depends(get_db)):
     ).first()
     profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
 
+    # 确保 profile 存在（upsert）
+    if not profile:
+        profile = UserProfile(
+            user_id=user.id,
+            display_name=user.nickname or "用户",
+            username=None,
+            avatar_url="",
+            bio="",
+            role="creator",
+        )
+        db.add(profile)
+        db.commit()
+
     return {
         "loggedIn": True,
         "user": {
@@ -308,8 +321,19 @@ def update_profile(
         raise HTTPException(401, "未登录")
 
     profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
+
+    # 核心修复：没有 profile 时自动创建（upsert）
     if not profile:
-        raise HTTPException(404, "用户资料不存在")
+        profile = UserProfile(
+            user_id=user.id,
+            display_name=user.nickname or "用户",
+            username=None,
+            avatar_url="",
+            bio="",
+            role="creator",
+        )
+        db.add(profile)
+        db.flush()
 
     # 检查 username 唯一性（排除自己）
     if req.username and req.username != profile.username:

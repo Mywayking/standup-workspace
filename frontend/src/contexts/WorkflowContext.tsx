@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { useAuth } from "./AuthContext";
 import { authApi } from "@/lib/api";
+import { migrateHistoryItem } from "@/lib/workflowHistory";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -66,7 +67,17 @@ function loadSessions(): WorkflowSession[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const sessions: WorkflowSession[] = raw ? JSON.parse(raw) : [];
+    // Apply migration: filter out empty/invalid cards and sessions
+    const migrated = sessions
+      .map((session) => ({
+        ...session,
+        cards: session.cards
+          .map((card: any) => migrateHistoryItem(card))
+          .filter(Boolean) as WorkflowCard[],
+      }))
+      .filter((s) => s.cards.length > 0);
+    return migrated;
   } catch { return []; }
 }
 
@@ -174,6 +185,7 @@ function fromApiSession(s: any): WorkflowSession {
     })),
     createdAt: s.created_at,
     updatedAt: s.updated_at,
+    saveStatus: "saved_cloud" as SaveStatus,
   };
 }
 

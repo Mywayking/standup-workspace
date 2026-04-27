@@ -1,7 +1,8 @@
 "use client";
 import React, { useState } from "react";
-import { useWorkflow, type WorkflowCard, type CardType } from "./WorkflowContext";
+import { useWorkflow, type WorkflowCard, type CardType, type WorkflowSession } from "./WorkflowContext";
 import { getWorkflowCardSummary } from "@/lib/workflowSummary";
+import { canContinueCard, canContinueSession, getValidCardCount } from "@/lib/workflowHistory";
 import { useAuth } from "./AuthContext";
 import { useToast } from "@/components/Toast";
 
@@ -527,16 +528,11 @@ function HistorySessionItem({
   onRestore,
   onDelete,
 }: {
-  s: {
-    id: string;
-    sourceInput: string;
-    cards: WorkflowCard[];
-    createdAt: string;
-    updatedAt: string;
-  };
+  s: WorkflowSession;
   onRestore: (id: string) => void;
   onDelete?: (id: string) => void;
 }) {
+  const { toast } = useToast();
   const date = new Date(s.updatedAt).toLocaleDateString("zh-CN", {
     month: "numeric",
     day: "numeric",
@@ -552,16 +548,26 @@ function HistorySessionItem({
     .map(([t, n]) => `${CARD_TYPE_ICONS[t as CardType]}${n}`)
     .join(" ");
 
+  const validCount = getValidCardCount(s);
+
+  const handleRestore = () => {
+    if (!canContinueSession(s)) {
+      toast("该历史会话中没有可继续的内容", "error");
+      return;
+    }
+    onRestore(s.id);
+  };
+
   return (
     <div className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-xl border border-gray-100">
       <div className="flex-1 min-w-0">
         <p className="text-xs text-gray-700 line-clamp-1 truncate">{s.sourceInput}</p>
         <p className="text-xs text-gray-400 mt-0.5">
-          {date} · {s.cards.length} 个结果{typeSummary ? ` · ${typeSummary}` : ""}
+          {date} · {validCount > 0 ? `${validCount} 个结果` : '无有效结果'}{typeSummary ? ` · ${typeSummary}` : ""}
         </p>
       </div>
       <button
-        onClick={() => onRestore(s.id)}
+        onClick={handleRestore}
         className="text-xs text-blue-600 hover:text-blue-700 shrink-0 font-medium"
       >
         继续
