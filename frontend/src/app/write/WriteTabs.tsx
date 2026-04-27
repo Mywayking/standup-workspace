@@ -21,7 +21,38 @@ const TAB_LABELS: Record<Tab, string> = {
 
 function WriteTabsInner() {
   const [activeTab, setActiveTab] = useState<Tab>("premise");
-  const { session, addCard, appendRewriteVersion, initSession, setHandoffCallback } = useWorkflow();
+  const { session, appendRewriteVersion, initSession, setHandoffCallback, addCardEnsuringSession } = useWorkflow();
+
+  const TASK_CARDS = [
+    {
+      key: "素材",
+      icon: "📝",
+      title: "我有一段生活素材",
+      desc: "一件事、一个观察、一段情绪",
+      tab: "premise" as Tab,
+    },
+    {
+      key: "前提",
+      icon: "💡",
+      title: "我有一个前提",
+      desc: "已经有判断或结论，想找角度",
+      tab: "angles" as Tab,
+    },
+    {
+      key: "梗",
+      icon: "🔥",
+      title: "我有一句梗",
+      desc: "一个笑点、一句吐槽、一个灵感",
+      tab: "joke_to_premise" as Tab,
+    },
+    {
+      key: "草稿",
+      icon: "✍️",
+      title: "我有一段草稿",
+      desc: "完整段子，想改稿或上台版",
+      tab: "rewrite" as Tab,
+    },
+  ];
 
   // Pending data from cross-tab navigation
   const [pendingPremise, setPendingPremise] = useState<{ text: string; sourcePath: string[] } | null>(null);
@@ -86,14 +117,19 @@ function WriteTabsInner() {
     sourcePath: string[],
     sourceInput?: string,
   ) => {
-    if (!session) {
-      initSession(sourceInput || content.slice(0, 100));
-    }
     if (type === "rewrite") {
       appendRewriteVersion(content, rawData, sourcePath);
     } else {
       const title = content.slice(0, 40) + (content.length > 40 ? "…" : "");
-      addCard({ type, title, content, rawData, status: "success", sourcePath });
+      addCardEnsuringSession(sourceInput || content.slice(0, 100), {
+        type,
+        title,
+        content,
+        rawData,
+        status: "success",
+        sourcePath,
+      });
+      toast("已保存到当前创作会话", "success");
     }
   };
 
@@ -150,7 +186,7 @@ function WriteTabsInner() {
       </div>
 
       {/* Tab Bar */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-200 sticky top-[56px] z-10">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex gap-1 overflow-x-auto scrollbar-hide">
             {([
@@ -178,6 +214,27 @@ function WriteTabsInner() {
               </button>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Task Entry Cards */}
+      <div className="mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {TASK_CARDS.map((card) => (
+            <button
+              key={card.key}
+              onClick={() => setActiveTab(card.tab)}
+              className={`bg-white rounded-xl border p-4 text-left transition-all hover:shadow-md ${
+                activeTab === card.tab
+                  ? "border-blue-400 ring-2 ring-blue-100"
+                  : "border-gray-200 hover:border-gray-300"
+              }`}
+            >
+              <div className="text-2xl mb-2">{card.icon}</div>
+              <div className="font-semibold text-gray-800 text-sm">{card.title}</div>
+              <div className="text-xs text-gray-400 mt-1">{card.desc}</div>
+            </button>
+          ))}
         </div>
       </div>
 

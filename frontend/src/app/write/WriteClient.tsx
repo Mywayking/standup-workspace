@@ -60,6 +60,8 @@ interface StreamingState {
   error: string | null;
   sessionId: string;
   feedbackSent: number | null;  // null=not sent, 1=thumbs up, 0=thumbs down
+  duration?: number;   // P1-3: elapsed seconds
+  model?: string;      // P1-3: model name from API
 }
 
 interface KbSegment {
@@ -400,6 +402,7 @@ function StreamingResultCard({
   setCmdKOpen,
   inputText,
   setInputText,
+  sourcePath,
 }: {
   stream: StreamingState;
   onFeedback: (rating: 1 | 0, sessionId: string) => void;
@@ -408,6 +411,7 @@ function StreamingResultCard({
   setCmdKOpen: (open: boolean) => void;
   inputText: string;
   setInputText: (text: string | ((prev: string) => string)) => void;
+  sourcePath?: string[];  // P1-3: where this content came from
 }) {
   if (stream.phase === "error") {
     let msg = stream.error ?? "";
@@ -454,25 +458,53 @@ function StreamingResultCard({
     );
   }
 
+  // P1-3: Dynamic status card
+  const sourceLabel = sourcePath && sourcePath.length > 0
+    ? sourcePath[sourcePath.length - 1]
+    : "改稿";
+  const isDone = stream.phase === "done";
+  const durationSec = stream.duration;
+  const modelName = stream.model;
+  const nextSuggestion = isDone && stream.result?.next_suggestion
+    ? stream.result.next_suggestion
+    : null;
+
   if (stream.phase === "idle" || (!stream.displayText && stream.phase === "thinking")) {
     return (
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-        <p className="text-base font-bold text-gray-800 mb-1">你将获得：</p>
-        <div className="space-y-3">
-          {[
-            "一句话总诊断",
-            "最该优先修改的3个问题",
-            "已经有效的笑点",
-            "可直接替换的改写建议",
-          ].map((item) => (
-            <div key={item} className="flex items-start gap-2.5">
-              <span className="text-green-500 mt-0.5 shrink-0">✓</span>
-              <p className="text-sm text-gray-600">{item}</p>
-            </div>
-          ))}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+        {/* P1-3: Status rows */}
+        <div className="space-y-2 mb-4">
+          <div className="flex items-start gap-2">
+            <span className="text-xs text-gray-400 shrink-0 w-14">当前来源</span>
+            <span className="text-xs text-gray-600">
+              {sourceLabel}
+              {sourcePath && sourcePath.length > 1 && (
+                <span className="text-gray-300 ml-1">· {sourcePath.join(" → ")}</span>
+              )}
+            </span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-xs text-gray-400 shrink-0 w-14">保存状态</span>
+            <span className="text-xs text-gray-400">等待输入段子后开始分析</span>
+          </div>
         </div>
-        <div className="mt-5 pt-4 border-t border-gray-100">
-          <p className="text-xs text-gray-400">分析完成后自动呈现</p>
+
+        {/* Divider */}
+        <div className="border-t border-gray-100 pt-4">
+          <p className="text-xs font-semibold text-gray-500 mb-2">分析完成后将获得：</p>
+          <div className="space-y-2">
+            {[
+              "一句话总诊断",
+              "最该优先修改的3个问题",
+              "已经有效的笑点",
+              "可直接替换的改写建议",
+            ].map((item) => (
+              <div key={item} className="flex items-start gap-2">
+                <span className="text-green-500 shrink-0 mt-0.5">✓</span>
+                <p className="text-sm text-gray-600">{item}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -547,6 +579,39 @@ function StreamingResultCard({
 
   return (
     <>
+      {/* P1-3: Dynamic status card at top of done state */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-3">
+        <div className="space-y-1.5">
+          <div className="flex items-start gap-2">
+            <span className="text-xs text-gray-400 shrink-0 w-14">当前来源</span>
+            <span className="text-xs text-gray-700 font-medium">
+              {sourceLabel}
+              {sourcePath && sourcePath.length > 1 && (
+                <span className="text-gray-400 ml-1">· {sourcePath.join(" → ")}</span>
+              )}
+            </span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-xs text-gray-400 shrink-0 w-14">保存状态</span>
+            <span className="text-xs text-green-600 font-medium">已自动保存 · 刚刚</span>
+          </div>
+          {(modelName || durationSec) && (
+            <div className="flex items-start gap-2">
+              <span className="text-xs text-gray-400 shrink-0 w-14">模型</span>
+              <span className="text-xs text-gray-600">
+                {modelName || "deepseek-v4-pro"}{durationSec ? ` · ${durationSec}s` : ""}
+              </span>
+            </div>
+          )}
+          {nextSuggestion && (
+            <div className="flex items-start gap-2">
+              <span className="text-xs text-gray-400 shrink-0 w-14">建议</span>
+              <span className="text-xs text-blue-600 leading-relaxed">{esc(nextSuggestion)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* 2.1 总诊断 */}
       <div className="bg-indigo-50 border-l-4 border-indigo-500 rounded-r-2xl p-4">
         <div className="flex items-start gap-2">
@@ -723,37 +788,55 @@ function StreamingResultCard({
 
       {/* 2.5 下一步动作按钮组 */}
       <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-5">
-        <p className="text-sm font-semibold text-gray-700 mb-3">继续创作</p>
-        <div className="flex flex-wrap gap-2">
-          {[
-            { label: "强化结尾", action: "strengthen_end" },
-            { label: "增加包袱", action: "more_punchlines" },
-            { label: "转综艺版", action: "variety_style" },
-            { label: "保存素材", action: "save_kb" },
-            { label: "保存会话", action: "save_session" },
-          ].map((btn) => (
+        <div className="flex items-center gap-2 mb-3">
+          <p className="text-sm font-semibold text-gray-700">继续创作</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 主推荐操作 */}
+          <button
+            onClick={() => {
+              setInputText((t) => t + '\n\n---\n[改编提示：强化结尾，让爆点更炸]');
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm"
+          >
+            ←笑点 强化结尾
+          </button>
+
+          {/* 更多操作 */}
+          <div className="relative inline-block">
             <button
-              key={btn.action}
-              onClick={() => {
-                if (btn.action === "save_kb") {
-                  setCmdKQuery(inputText.slice(0, 50));
-                  setCmdKOpen(true);
-                } else if (btn.action === "variety_style") {
-                  setInputText((t) => t + '\n\n---\n[改编：综艺风格版本]');
-                } else {
-                  // Other actions: append hint to input
-                  const hints: Record<string, string> = {
-                    strengthen_end: '[改编提示：强化结尾，让爆点更炸]',
-                    more_punchlines: '[改编提示：增加2-3个转折和笑点]',
-                  };
-                  setInputText((t) => t + '\n\n---\n' + hints[btn.action]);
-                }
+              onClick={(e) => {
+                const dropdown = e.currentTarget.nextElementSibling as HTMLElement | null;
+                if (dropdown) dropdown.classList.toggle("hidden");
               }}
-              className="px-4 py-2 text-sm border border-indigo-300 text-indigo-600 rounded-lg hover:bg-indigo-50 font-medium transition-colors"
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
             >
-              {btn.label}
+              更多操作 ▾
             </button>
-          ))}
+            <div className="absolute left-0 mt-1 w-44 bg-white border rounded-xl shadow-lg py-1 z-10 hidden">
+              {[
+                {label: "增加包袱", hint: "[改编提示：增加2-3个转折和笑点]", action: "more_punchlines" },
+                {label: "转综艺版", hint: "\n\n---\n[改编：综艺风格版本]", action: "variety_style" },
+                {label: "保存素材", hint: null, action: "save_kb" },
+                {label: "保存会话", hint: null, action: "save_session" },
+              ].map((action) => (
+                <button
+                  key={action.action}
+                  onClick={() => {
+                    if (action.action === "save_kb") {
+                      setCmdKQuery(inputText.slice(0, 50));
+                      setCmdKOpen(true);
+                    } else if (action.hint) {
+                      setInputText((t) => t + action.hint!);
+                    }
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
         {r.next_suggestion && (
           <p className="text-xs text-gray-400 mt-3 leading-relaxed">💡 {esc(r.next_suggestion)}</p>
@@ -812,8 +895,7 @@ export default function WritePage({ initialText, sourcePath, onClearPending, onR
   const streamRef = useRef<StreamingState>(stream);
   streamRef.current = stream;
   const abortRef = useRef<AbortController | null>(null);
-
-
+  const startTimeRef = useRef<number>(0);  // P1-3: track request start time
 
   const autoTriggered = useRef(false);
   const analyzeBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -866,7 +948,8 @@ export default function WritePage({ initialText, sourcePath, onClearPending, onR
     abortRef.current?.abort();
 
     const sid = crypto.randomUUID();
-    setStream((s) => ({ ...s, phase: "thinking", rawTokens: "", displayText: "", result: null, error: null, sessionId: sid, feedbackSent: null }));
+    startTimeRef.current = Date.now();  // P1-3: mark request start
+    setStream((s) => ({ ...s, phase: "thinking", rawTokens: "", displayText: "", result: null, error: null, sessionId: sid, feedbackSent: null, duration: undefined, model: undefined }));
 
     // Timeout fallback: abort request after 90s
     const controller = new AbortController();
@@ -1007,18 +1090,29 @@ export default function WritePage({ initialText, sourcePath, onClearPending, onR
             // Normalize score to 0-100
 
 
+            // P1-3: calculate duration and extract model name
+            const elapsedSec = startTimeRef.current
+              ? Math.round((Date.now() - startTimeRef.current) / 1000)
+              : undefined;
+            const modelName = typeof raw === 'object' && raw !== null && (raw as any)._meta?.model
+              ? (raw as any)._meta.model
+              : undefined;
+
             const histItem: HistoryItem = {
               id: crypto.randomUUID(),
               text: inputText.slice(0, 100),
               result,
               timestamp: Date.now(),
             };
+            void histItem; // suppress unused warning
             abortRef.current = null;
 
             setStream((current): StreamingState => ({
               ...current,
               phase: "done",
               result,
+              duration: elapsedSec,
+              model: modelName,
             }));
           } else if (eventType === "error" && eventData) {
             let err: any = {};
@@ -1217,6 +1311,7 @@ export default function WritePage({ initialText, sourcePath, onClearPending, onR
               setCmdKOpen={setCmdKOpen}
               inputText={inputText}
               setInputText={setInputText}
+              sourcePath={sourcePath}
             />
 
             {/* Copy Result — only when done */}

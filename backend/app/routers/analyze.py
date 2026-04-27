@@ -195,11 +195,13 @@ async def _analyze_all_fast(client: httpx.AsyncClient, text: str, deepseek_key: 
         r = await client.post(
             "https://api.deepseek.com/chat/completions",
             json={
-                "model": "deepseek-chat",
+                "model": "deepseek-v4-pro",
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
+                "thinking": {"type": "disabled"},
+                "reasoning_effort": "low",
                 "temperature": 0.2,
                 "max_tokens": 6000,
             },

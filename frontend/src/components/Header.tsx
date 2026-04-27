@@ -38,11 +38,18 @@ export default function Header() {
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
                   className="flex items-center gap-2 py-1.5 px-3 rounded-lg hover:bg-gray-100 transition-colors"
                 >
-                  <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-sm font-medium">
-                    {user?.nickname?.charAt(0) || "U"}
-                  </div>
+                  {user?.profile?.avatarUrl ? (
+                    <img
+                      src={user.profile.avatarUrl}
+                      className="w-7 h-7 rounded-full"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-sm font-medium">
+                      {user?.profile?.displayName?.[0] || user?.nickname?.[0] || "U"}
+                    </div>
+                  )}
                   <span className="text-sm text-gray-700 hidden sm:block">
-                    {user?.nickname}
+                    {user?.profile?.displayName || user?.nickname}
                   </span>
                   <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -55,18 +62,35 @@ export default function Header() {
                       className="fixed inset-0 z-10"
                       onClick={() => setUserMenuOpen(false)}
                     />
-                    <div className="absolute right-0 mt-1 w-40 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-20">
-                      {user?.email && (
-                        <div className="px-3 py-2 text-xs text-gray-500 truncate">
-                          {user.email}
-                        </div>
-                      )}
+                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-20">
+                      <a
+                        href="/settings/profile"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        onClick={() => setUserMenuOpen(false)}
+                      >
+                        账号设置
+                      </a>
+                      <a
+                        href="/materials"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        onClick={() => setUserMenuOpen(false)}
+                      >
+                        素材库
+                      </a>
+                      <a
+                        href="/jokes"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        onClick={() => setUserMenuOpen(false)}
+                      >
+                        段子库
+                      </a>
+                      <hr className="my-1" />
                       <button
                         onClick={async () => {
                           await logout();
                           setUserMenuOpen(false);
                         }}
-                        className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
                       >
                         退出登录
                       </button>

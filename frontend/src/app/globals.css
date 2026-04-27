@@ -26,3 +26,41 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* === 移动端修复 === */
+
+/* 1. 100vh 修复 iOS Safari */
+.min-h-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* 2. textarea 键盘遮挡 */
+textarea {
+  min-height: 120px;
+  /* 避免 iOS 上输入框被键盘遮挡 */
+  scroll-padding-top: 200px;
+}
+
+/* 3. sticky + overflow 修复 */
+.sticky {
+  position: -webkit-sticky;
+  position: sticky;
+}
+
+/* 4. Tab 横向滚动更可靠 */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 5. 中文长文本换行 */
+.break-all {
+  word-break: break-all;
+  overflow-wrap: break-word;
+}
+
+/* 6. 输入框聚焦时上移（避免被键盘遮挡）*/
+textarea:focus-visible {
+  transform: translateY(-4px);
+  transition: transform 0.2s;
+}

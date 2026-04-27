@@ -70,7 +70,7 @@ class DeepSeekClient:
     """DeepSeek Chat API via direct HTTP."""
 
     BASE_URL = "https://api.deepseek.com"
-    MODEL = "deepseek-chat"
+    MODEL = "deepseek-v4-pro"
 
     def __init__(self, api_key: str):
         self.api_key = api_key
@@ -83,6 +83,8 @@ class DeepSeekClient:
                 "model": self.MODEL,
                 "messages": messages,
                 "temperature": temperature,
+                "thinking": {"type": "disabled"},
+                "reasoning_effort": "low",
             },
             headers={
                 "Authorization": f"Bearer {self.api_key}",

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..database import get_db, User, UserAuthMethod
+from ..database import get_db, User, UserAuthMethod, UserProfile, CreatorProfile
 from ..services import auth as auth_service
 from ..services.session import create_session, delete_session, get_user_id_from_session
 from ..services.email import send_password_reset_email
@@ -51,6 +51,15 @@ class UserInfo(BaseModel):
     nickname: str
     email: Optional[str]
     phone: Optional[str]
+    profile: Optional["UserProfileInfo"]
+
+
+class UserProfileInfo(BaseModel):
+    displayName: str
+    username: Optional[str]
+    avatarUrl: str
+    bio: str
+    role: str
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -120,7 +129,7 @@ def register(req: RegisterReq, response: Response, db: Session = Depends(get_db)
     session_id = create_session(user.id)
     _set_cookie(response, session_id)
 
-    # 查找用户的邮箱/手机
+    # 查找用户的邮箱/手机和 profile
     email = db.query(UserAuthMethod).filter(
         UserAuthMethod.user_id == user.id,
         UserAuthMethod.auth_type == "email",
@@ -129,14 +138,22 @@ def register(req: RegisterReq, response: Response, db: Session = Depends(get_db)
         UserAuthMethod.user_id == user.id,
         UserAuthMethod.auth_type == "phone",
     ).first()
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
 
     return {
         "success": True,
         "user": {
             "id": user.ulid,
-            "nickname": user.nickname or "用户" + str(user.id),
+            "nickname": profile.display_name if profile else user.nickname or "用户",
             "email": email.auth_identifier if email else None,
             "phone": phone.auth_identifier if phone else None,
+            "profile": {
+                "displayName": profile.display_name if profile else "",
+                "username": profile.username if profile else "",
+                "avatarUrl": profile.avatar_url if profile else "",
+                "bio": profile.bio if profile else "",
+                "role": profile.role if profile else "creator",
+            } if profile else None,
         },
     }
 
@@ -169,14 +186,22 @@ def login(req: LoginReq, response: Response, db: Session = Depends(get_db)):
         UserAuthMethod.user_id == user.id,
         UserAuthMethod.auth_type == "phone",
     ).first()
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
 
     return {
         "success": True,
         "user": {
             "id": user.ulid,
-            "nickname": user.nickname or "用户" + str(user.id),
+            "nickname": profile.display_name if profile else user.nickname or "用户",
             "email": email.auth_identifier if email else None,
             "phone": phone.auth_identifier if phone else None,
+            "profile": {
+                "displayName": profile.display_name if profile else "",
+                "username": profile.username if profile else "",
+                "avatarUrl": profile.avatar_url if profile else "",
+                "bio": profile.bio if profile else "",
+                "role": profile.role if profile else "creator",
+            } if profile else None,
         },
     }
 
@@ -208,14 +233,22 @@ def me(request: Request, db: Session = Depends(get_db)):
         UserAuthMethod.user_id == user.id,
         UserAuthMethod.auth_type == "phone",
     ).first()
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
 
     return {
         "loggedIn": True,
         "user": {
             "id": user.ulid,
-            "nickname": user.nickname or "用户" + str(user.id),
+            "nickname": profile.display_name if profile else user.nickname or "用户",
             "email": email.auth_identifier if email else None,
             "phone": phone.auth_identifier if phone else None,
+            "profile": {
+                "displayName": profile.display_name if profile else "",
+                "username": profile.username if profile else "",
+                "avatarUrl": profile.avatar_url if profile else "",
+                "bio": profile.bio if profile else "",
+                "role": profile.role if profile else "creator",
+            } if profile else None,
         },
     }
 
@@ -267,3 +300,109 @@ def reset_password(req: ResetPasswordReq, db: Session = Depends(get_db)):
         raise HTTPException(400, err)
 
     return {"success": True, "message": "密码重置成功，请使用新密码登录"}
+
+
+# ─── 用户资料 ─────────────────────────────────────────────────────────────────
+
+class UpdateProfileReq(BaseModel):
+    displayName: Optional[str] = None
+    username: Optional[str] = None
+    avatarUrl: Optional[str] = None
+    bio: Optional[str] = None
+
+
+@router.patch("/users/profile")
+def update_profile(
+    req: UpdateProfileReq,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    user = _current_user(request, db)
+    if not user:
+        raise HTTPException(401, "未登录")
+
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
+    if not profile:
+        raise HTTPException(404, "用户资料不存在")
+
+    # 检查 username 唯一性（排除自己）
+    if req.username and req.username != profile.username:
+        existing = db.query(UserProfile).filter(
+            UserProfile.username == req.username,
+            UserProfile.user_id != user.id,
+        ).first()
+        if existing:
+            raise HTTPException(400, "用户名已被占用")
+
+    # 更新字段
+    if req.displayName is not None:
+        profile.display_name = req.displayName
+    if req.username is not None:
+        profile.username = req.username
+    if req.avatarUrl is not None:
+        profile.avatar_url = req.avatarUrl
+    if req.bio is not None:
+        profile.bio = req.bio
+
+    db.commit()
+    return {
+        "success": True,
+        "profile": {
+            "displayName": profile.display_name,
+            "username": profile.username,
+            "avatarUrl": profile.avatar_url,
+            "bio": profile.bio,
+            "role": profile.role,
+        },
+    }
+
+
+class UpdateCreatorProfileReq(BaseModel):
+    creator_type: Optional[str] = None
+    topics: Optional[list] = None
+    humor_styles: Optional[list] = None
+    stage_experience: Optional[str] = None
+    preferred_output: Optional[str] = None
+    avoid_topics: Optional[list] = None
+
+
+@router.patch("/users/creator-profile")
+def update_creator_profile(
+    req: UpdateCreatorProfileReq,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    user = _current_user(request, db)
+    if not user:
+        raise HTTPException(401, "未登录")
+
+    profile = db.query(CreatorProfile).filter(CreatorProfile.user_id == user.id).first()
+    if not profile:
+        profile = CreatorProfile(user_id=user.id)
+        db.add(profile)
+
+    if req.creator_type is not None:
+        profile.creator_type = req.creator_type
+    if req.topics is not None:
+        profile.topics = req.topics
+    if req.humor_styles is not None:
+        profile.humor_styles = req.humor_styles
+    if req.stage_experience is not None:
+        profile.stage_experience = req.stage_experience
+    if req.preferred_output is not None:
+        profile.preferred_output = req.preferred_output
+    if req.avoid_topics is not None:
+        profile.avoid_topics = req.avoid_topics
+
+    db.commit()
+    return {
+        "success": True,
+        "creator_profile": {
+            "creatorType": profile.creator_type,
+            "topics": profile.topics,
+            "humorStyles": profile.humor_styles,
+            "stageExperience": profile.stage_experience,
+            "preferredOutput": profile.preferred_output,
+            "avoidTopics": profile.avoid_topics,
+        },
+    }

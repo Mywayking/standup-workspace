@@ -217,6 +217,57 @@ export const writeApi = {
     streamPost("/api/write/rewrite/stream", { text }, opts),
 };
 
+// ─── Input Detection API ──────────────────────────────────────────────────────
+
+export interface DetectInputResult {
+  input_type: "material" | "premise" | "punchline" | "draft";
+  confidence: number;
+  reason: string;
+  recommended_next_step: "提炼前提" | "找角度" | "梗写前提" | "改稿";
+}
+
+export const detectInputApi = {
+  detect: (text: string) =>
+    api<DetectInputResult>("/api/detect-input", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+};
+
+// ─── Stage Version API ───────────────────────────────────────────────────────
+
+export interface StageVersionAnnotation {
+  type: "pause" | "stress" | "laugh" | "callback";
+  position: number;
+  text: string;
+  note: string;
+}
+
+export interface StageVersionStats {
+  word_count: number;
+  estimated_duration: string;
+  punchline_count: number;
+}
+
+export interface StageVersionResult {
+  stage_version: string;
+  annotations: StageVersionAnnotation[];
+  stats: StageVersionStats;
+}
+
+export const stageVersionApi = {
+  stream: (
+    text: string,
+    opts?: {
+      onChunk?: (data: string, event: string) => void;
+      onEvent?: (event: string, data: unknown) => void;
+      onToken?: (token: string) => void;
+      signal?: AbortSignal;
+      timeoutMs?: number;
+    }
+  ) => streamPost("/api/stage-version/stream", { text }, opts),
+};
+
 // ─── Auth API ─────────────────────────────────────────────────────────────────
 
 export interface AuthUser {
@@ -224,6 +275,13 @@ export interface AuthUser {
   nickname: string;
   email: string | null;
   phone: string | null;
+  profile: {
+    displayName: string;
+    username: string;
+    avatarUrl: string;
+    bio: string;
+    role: string;
+  } | null;
 }
 
 export interface MeResponse {
@@ -294,6 +352,40 @@ export const authApi = {
     }).then(async r => {
       const data = await r.json();
       if (!r.ok) throw new Error(data.detail || "重置失败");
+      return data;
+    }),
+
+  updateProfile: (payload: {
+    displayName?: string;
+    username?: string;
+    avatarUrl?: string;
+    bio?: string;
+  }): Promise<{ success: boolean; profile: AuthUser["profile"] }> =>
+    fetch("/api/auth/users/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(async r => {
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "更新失败");
+      return data;
+    }),
+
+  updateCreatorProfile: (payload: {
+    creator_type?: string;
+    topics?: string[];
+    humor_styles?: string[];
+    stage_experience?: string;
+    preferred_output?: string;
+    avoid_topics?: string[];
+  }): Promise<{ success: boolean }> =>
+    fetch("/api/auth/users/creator-profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(async r => {
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "更新失败");
       return data;
     }),
 };

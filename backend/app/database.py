@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Generator
 
 from sqlalchemy import create_engine, event, Column, Integer, String, Text, DateTime, ForeignKey, JSON, Float, UniqueConstraint
-from sqlalchemy.orm import sessionmaker, Session, relationship, declarative_base
+from sqlalchemy.orm import sessionmaker, Session, relationship, declarative_base, backref
 from datetime import datetime
 
 from .config import settings
@@ -268,6 +268,39 @@ class AuthSession(Base):
     expired_at = Column(DateTime, nullable=False)
 
     user = relationship("User")
+
+
+class UserProfile(Base):
+    """用户展示资料"""
+    __tablename__ = "user_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    display_name = Column(String(100), default="")
+    username = Column(String(50), unique=True, nullable=True)  # @xxx，全局唯一
+    avatar_url = Column(String(500), default="")
+    bio = Column(Text, default="")
+    role = Column(String(20), default="creator")  # creator / pro / admin
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", backref=backref("profile", uselist=False))
+
+
+class CreatorProfile(Base):
+    """创作者偏好"""
+    __tablename__ = "creator_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    creator_type = Column(String(20), default="新人")
+    topics = Column(JSON, default=list)
+    humor_styles = Column(JSON, default=list)
+    stage_experience = Column(String(20), default="开放麦")
+    preferred_output = Column(String(20), default="文本")
+    avoid_topics = Column(JSON, default=list)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 def get_db() -> Generator[Session, None, None]:

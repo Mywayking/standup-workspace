@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AuthProvider } from "@/contexts/AuthContext";
 import Header from "@/components/Header";
+import OnboardingModal from "@/components/OnboardingModal";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           <Header />
           {children}
+          <OnboardingModal />
         </AuthProvider>
       </body>
     </html>

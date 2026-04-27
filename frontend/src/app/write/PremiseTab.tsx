@@ -2,6 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { useStreamingTask, StreamingMeta } from "@/hooks/useStreamingTask";
+import { detectInputApi, type DetectInputResult } from "@/lib/api";
 
 interface PremiseCandidate {
   text: string;
@@ -71,12 +72,40 @@ export default function PremiseTab({
   const inputTextRef = useRef(inputText);
   inputTextRef.current = inputText;
 
+  // Input type detection state
+  const [detectedType, setDetectedType] = useState<string>("");
+  const [recommendedStep, setRecommendedStep] = useState<string>("");
+  const [detecting, setDetecting] = useState(false);
+  const detectDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [copiedRec, setCopiedRec] = useState(false);
   const regenerateRef = useRef<() => void>(null);
 
   const [introDismissed, setIntroDismissed] = useState(() => {
     try { return localStorage.getItem("premise_intro_dismissed") === "1"; } catch { return false; }
   });
+
+  // Debounced input type detection
+  useEffect(() => {
+    if (inputText.length < 10) {
+      setDetectedType("");
+      setRecommendedStep("");
+      return;
+    }
+    if (detectDebounceRef.current) clearTimeout(detectDebounceRef.current);
+    detectDebounceRef.current = setTimeout(async () => {
+      setDetecting(true);
+      try {
+        const res = await detectInputApi.detect(inputText);
+        if (res.confidence >= 0.6) {
+          setDetectedType(res.input_type);
+          setRecommendedStep(res.recommended_next_step);
+        }
+      } catch { /* silent fail */ }
+      finally { setDetecting(false); }
+    }, 800);
+    return () => { if (detectDebounceRef.current) clearTimeout(detectDebounceRef.current); };
+  }, [inputText]);
 
   const { state, start, abort, setError } = useStreamingTask<PremiseResult>("/api/write/premise/stream", {
     timeoutMs: 60_000,
@@ -178,6 +207,25 @@ export default function PremiseTab({
               }
             }}
           />
+          {/* Input Type Detection */}
+          {inputText.length >= 10 && (
+            <div className="mt-2 text-sm text-gray-500 animate-fade-in">
+              {detecting ? (
+                <span>正在分析...</span>
+              ) : detectedType && detectedType !== "material" ? (
+                <span>
+                  我判断你现在卡在 <span className="font-medium text-blue-600">{detectedType}</span>，
+                  建议先 <button
+                    onClick={() => {
+                      if (recommendedStep === "找角度") onAction?.("go-angles", inputText);
+                      else if (recommendedStep === "改稿") onAction?.("go-rewrite", inputText);
+                    }}
+                    className="text-blue-600 underline"
+                  >{recommendedStep}</button>
+                </span>
+              ) : null}
+            </div>
+          )}
           <div className="flex items-center justify-between mt-3">
             <div className="flex items-center gap-3">
               <span className="text-xs text-gray-400">{inputText.length > 0 ? `已输入 ${inputText.length} 字` : '请输入素材'}</span>

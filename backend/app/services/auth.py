@@ -11,7 +11,9 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, InvalidHash
 from sqlalchemy.orm import Session
 
-from ..database import User, UserAuthMethod, PasswordResetToken
+import random
+
+from ..database import User, UserAuthMethod, PasswordResetToken, UserProfile
 from .session import create_session, delete_session
 
 ph = PasswordHasher()
@@ -95,9 +97,37 @@ def register_user(
 
     # 5. 更新 last_login_at
     user.last_login_at = datetime.now(timezone.utc)
+    db.flush()
+
+    # 6. 创建用户资料
+    if identifier_type == "email":
+        prefix = identifier.split("@")[0]
+        default_display_name = prefix
+        default_username = _generate_unique_username(db, prefix)
+    else:  # phone
+        suffix = identifier[-4:]
+        default_display_name = f"喜剧创作者{suffix}"
+        default_username = _generate_unique_username(db, f"comedian{suffix}")
+
+    profile = UserProfile(
+        user_id=user.id,
+        display_name=default_display_name,
+        username=default_username,
+    )
+    db.add(profile)
     db.commit()
 
     return user, ""
+
+
+def _generate_unique_username(db: Session, base: str) -> str:
+    """生成不冲突的 username"""
+    candidate = base
+    for _ in range(10):
+        if not db.query(UserProfile).filter(UserProfile.username == candidate).first():
+            return candidate
+        candidate = f"{base}{random.randint(1000, 9999)}"
+    return f"{base}{random.randint(1000, 9999)}"
 
 
 # ─── 登录 ──────────────────────────────────────────────────────────────────────

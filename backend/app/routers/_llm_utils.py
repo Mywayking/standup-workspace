@@ -50,13 +50,15 @@ def _build_extract_json(system_prompt: str, user_prompt: str, minimax_key: str, 
             r = client.post(
                 "https://api.deepseek.com/chat/completions",
                 json={
-                    "model": "deepseek-chat",
+                    "model": "deepseek-v4-pro",
                     "messages": [
                         {"role": "system", "content": system_prompt.strip()},
                         {"role": "user", "content": user_prompt},
                     ],
                     "temperature": 0.2,
                     "max_tokens": 6000,
+                    "thinking": {"type": "disabled"},
+                    "reasoning_effort": "low",
                 },
                 headers={"Authorization": "Bearer " + deepseek_key, "Content-Type": "application/json"},
             )

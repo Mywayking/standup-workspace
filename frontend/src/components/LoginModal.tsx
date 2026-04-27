@@ -102,9 +102,14 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">
-            {tab === "register" ? "注册" : "登录"}
-          </h2>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {tab === "register" ? "注册" : "登录"}
+            </h2>
+            {tab === "register" && (
+              <p className="text-sm text-indigo-600 mt-0.5 font-medium">保存这条段子灵感</p>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -114,6 +119,27 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
             </svg>
           </button>
         </div>
+
+        {/* Feature list (register only) */}
+        {tab === "register" && (
+          <div className="px-6 py-3 bg-indigo-50 border-b border-indigo-100">
+            <ul className="space-y-1">
+              {[
+                "保存创作历史",
+                "继续上次改稿",
+                "建立你的素材库",
+                "让 AI 记住你的喜剧风格",
+              ].map((item) => (
+                <li key={item} className="flex items-center gap-2 text-sm text-indigo-700">
+                  <svg className="w-3.5 h-3.5 text-indigo-400 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex border-b border-gray-200">
@@ -195,8 +221,19 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
             disabled={loading}
             className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-sm font-medium rounded-lg transition-colors"
           >
-            {loading ? "处理中..." : tab === "register" ? "注册" : "登录"}
+            {loading ? "处理中..." : tab === "register" ? "登录并保存" : "登录"}
           </button>
+
+          {/* 先复制结果（注册时） */}
+          {tab === "register" && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              先复制结果
+            </button>
+          )}
 
           {/* 忘记密码（仅登录） */}
           {tab === "login" && (
