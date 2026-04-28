@@ -28,6 +28,8 @@ import StepHeader from "./components/StepHeader";
 import StickyPrimaryAction from "./components/StickyPrimaryAction";
 import WorkflowCardComponent, { WorkflowCardSkeleton } from "./components/WorkflowCard";
 import SaveStatusBadge from "./components/SaveStatusBadge";
+import { StepProgressBar } from "./components/StepProgressBar";
+import type { ActionState } from "./types";
 import JokeLibraryDrawer from "./components/JokeLibraryDrawer";
 import VersionCompareDrawer from "./components/VersionCompareDrawer";
 import MobileBottomNav, { type Tab } from "./components/MobileBottomNav";
@@ -206,6 +208,10 @@ export default function GuidedWriteClient({
   const [prFlopParts, setPrFlopParts] = useState("");
   const [prForgotParts, setPrForgotParts] = useState("");
 
+  // Action state for button feedback
+  const [primaryAction, setPrimaryAction] = useState<ActionState>("idle");
+  const [primaryActionMsg, setPrimaryActionMsg] = useState("");
+
   // Load sessions on mount
   useEffect(() => {
     setSessions(loadSessions());
@@ -368,6 +374,7 @@ export default function GuidedWriteClient({
       setError(null);
       setLatencyMs(null);
       setModelName(null);
+      setPrimaryAction("pending");
       const start = Date.now();
 
       let fullContent = "";
@@ -403,6 +410,9 @@ export default function GuidedWriteClient({
           const ms = Date.now() - start;
           setLatencyMs(ms);
           addCard(step, fullContent || raw, undefined, { model: modelName ?? undefined, latencyMs: ms });
+          setPrimaryAction("success");
+          setPrimaryActionMsg("");
+          setTimeout(() => setPrimaryAction("idle"), 2000);
         },
         onError: (err) => {
           setError(err);
@@ -411,6 +421,8 @@ export default function GuidedWriteClient({
               ? { ...prev, saveStatus: "failed", updatedAt: new Date().toISOString() }
               : prev
           );
+          setPrimaryAction("error");
+          setPrimaryActionMsg(err);
         },
       });
 
@@ -432,6 +444,7 @@ export default function GuidedWriteClient({
       setGeneratingStep("detect");
       setTokens("");
       setError(null);
+      setPrimaryAction("pending");
       const start = Date.now();
 
       let rawData = "";
@@ -456,7 +469,7 @@ export default function GuidedWriteClient({
           const fakeSession = { sourceInput: input, inputType: detected, cards: [] as WorkflowCard[], id: "", title: "", scriptStatus: "idea" as const, mode: "guided" as const, saveStatus: "idle" as const, syncStatus: "local_only" as const, rootCardIds: [], currentStep: nextStep, createdAt: "", updatedAt: "" };
           runStep(fakeSession as WorkflowSession, nextStep);
         },
-        onError: (err) => { setError(err); setGenerating(false); setGeneratingStep(null); },
+        onError: (err) => { setError(err); setGenerating(false); setGeneratingStep(null); setPrimaryAction("error"); setPrimaryActionMsg(err); },
       });
     },
     [runStep]
@@ -524,6 +537,8 @@ export default function GuidedWriteClient({
     setError(null);
     setGenerating(false);
     setGeneratingStep(null);
+    setPrimaryAction("idle");
+    setPrimaryActionMsg("");
   }, []);
 
   // ── Restore session ────────────────────────────────────────────────────────
@@ -552,8 +567,9 @@ export default function GuidedWriteClient({
   const canAdvance = session != null && !generating && !error;
 
   const nextButtonLabel = (() => {
-    if (error) return "重试";
-    if (generating) return "生成中…";
+    if (primaryAction === "error") return "重试";
+    if (primaryAction === "pending") return "生成中…";
+    if (primaryAction === "success") return "✓ 已完成";
     if (session?.currentStep === "save") return "已完成";
     if (nextStepLabel) return `继续 → ${nextStepLabel}`;
     return "下一步";
@@ -621,9 +637,11 @@ export default function GuidedWriteClient({
 
             {/* Submit button */}
             <StickyPrimaryAction
-              label="开始创作"
+              label={primaryAction === "pending" ? "创作中…" : primaryAction === "success" ? "✓ 已完成" : "开始创作"}
+              status={primaryAction}
+              statusMessage={primaryActionMsg}
               onClick={handleSubmit}
-              disabled={!sourceInput.trim()}
+              disabled={!sourceInput.trim() || primaryAction === "pending"}
             />
           </div>
 
@@ -835,16 +853,19 @@ export default function GuidedWriteClient({
               </button>
               <StickyPrimaryAction
                 label={nextButtonLabel}
+                status={primaryAction}
+                statusMessage={primaryActionMsg}
                 onClick={() => {
-                  if (error) {
+                  if (primaryAction === "error") {
                     setError(null);
+                    setPrimaryAction("idle");
                     if (session) runStep(session, session.currentStep);
                     return;
                   }
+                  if (primaryAction === "pending") return;
                   handleNextStep();
                 }}
                 disabled={generating || (session.currentStep !== "input" && !lastCard && !tokens)}
-                loading={generating}
               />
             </div>
           </div>

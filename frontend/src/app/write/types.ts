@@ -93,6 +93,8 @@ export const NEXT_ACTION_BY_STATUS: Record<ScriptStatus, string> = {
 
 // ─── 保存状态 ───────────────────────────────────────────────
 
+export type ActionState = "idle" | "pending" | "success" | "error";
+
 export type SaveStatus =
   | "idle"         // 未保存
   | "saving"       // 保存中

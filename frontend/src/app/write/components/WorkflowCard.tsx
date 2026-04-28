@@ -55,6 +55,14 @@ export default function WorkflowCard({ card, onSelect, selected = false }: Props
           {new Date(card.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
         </span>
       </div>
+      {/* Source chain */}
+      {card.sourcePath && card.sourcePath.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-gray-50">
+          <span className="text-xs text-gray-400">
+            来源：{card.sourcePath.join(" → ")}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
