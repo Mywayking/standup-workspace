@@ -374,6 +374,35 @@ textarea:focus-visible {
   transform: none;
 }
 
+/* 段子库面板在桌面端的样式 */
+.desktop-left-panel {
+  width: 256px;
+  position: sticky;
+  top: 60px;
+  height: calc(100vh - 64px);
+  overflow-y: auto;
+  border-right: 1px solid #e5e7eb;
+  background: white;
+  flex-shrink: 0;
+}
+
+.desktop-right-panel {
+  width: 224px;
+  position: sticky;
+  top: 60px;
+  height: calc(100vh - 64px);
+  overflow-y: auto;
+  background: white;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1024px) {
+  .desktop-left-panel,
+  .desktop-right-panel {
+    display: none;
+  }
+}
+
 /* 字数提示行动化 */
 .char-count-hint {
   font-size: 12px;

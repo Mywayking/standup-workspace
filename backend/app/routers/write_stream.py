@@ -192,7 +192,7 @@ async def _stream_llm(scene: str, system: str, user: str, request_id: str, user_
     
     user_id 非空时会解析用户自填模型配置，优先使用。
     """
-    from .user_model_resolver import resolve_user_model_runtime
+    from app.llm.user_model_resolver import resolve_user_model_runtime
     user_runtime = resolve_user_model_runtime(user_id) if user_id else None
     gateway = get_stream_gateway(user_model_runtime=user_runtime)
     async for chunk in gateway.generate(LLMRequest(

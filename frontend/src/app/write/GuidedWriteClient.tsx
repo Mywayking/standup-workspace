@@ -28,6 +28,8 @@ import WorkflowCardComponent, { WorkflowCardSkeleton } from "./components/Workfl
 import SaveStatusBadge from "./components/SaveStatusBadge";
 import JokeLibraryDrawer from "./components/JokeLibraryDrawer";
 import MobileBottomNav, { type Tab } from "./components/MobileBottomNav";
+import DesktopLeftPanel from "./components/DesktopLeftPanel";
+import DesktopRightPanel from "./components/DesktopRightPanel";
 
 // ─── LocalStorage ─────────────────────────────────────────────────────────────
 
@@ -143,8 +145,8 @@ export function buildStepBody(step: WorkflowStep, sourceInput: string, selectedC
       // angles expects 'premise' field = the premise text from selected premise card
       return { premise: selectedCardContent || sourceInput };
     case "draft":
-      // draft uses selected card content as the premise
-      return { text: selectedCardContent || sourceInput };
+      // draft expects 'premise' (from selected card) + 'angle' (from angles card)
+      return { premise: selectedCardContent || sourceInput, angle: sourceInput };
     case "rewrite":
       // rewrite expects 'text' field with the draft/script content
       return { text: selectedCardContent || sourceInput };
@@ -456,68 +458,99 @@ export default function GuidedWriteClient({
 
   if (!session) {
     return (
-      <div className="write-shell flex flex-col min-h-screen bg-gray-50 pb-20 lg:pb-0">
-        <StepHeader
-          currentStep="input"
-          saveStatus="idle"
-          currentMode={mode}
-          onModeSwitch={() => onSwitchToQuick?.()}
-        />
+      <div className="write-shell flex flex-col min-h-screen bg-gray-50 lg:flex-row">
+        {/* Desktop: Left panel (段子库) */}
+        <div className="hidden lg:flex lg:flex-col lg:shrink-0">
+          <DesktopLeftPanel sessions={sessions} onRestore={handleRestore} onDelete={handleDelete} />
+        </div>
 
-        <div className="flex-1 px-4 pt-4 max-w-2xl mx-auto w-full">
-          {/* Entry cards */}
-          <div className="mb-5">
-            <p className="text-sm text-gray-500 mb-3">选择创作入口</p>
-            <div className="entry-cards-grid">
-              {TASK_ENTRY_CARDS.map((card) => (
-                <button
-                  key={card.key}
-                  onClick={() => handleEntryClick(card.key)}
-                  className={`bg-white rounded-2xl border p-4 text-left transition-all hover:shadow-md ${
-                    selectedEntry === card.key
-                      ? "border-blue-400 ring-2 ring-blue-100"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <div className="text-2xl mb-2">{card.icon}</div>
-                  <div className="font-semibold text-gray-800 text-sm">{card.title}</div>
-                  <div className="text-xs text-gray-400 mt-1">{card.desc}</div>
-                </button>
-              ))}
+        {/* Main content - always shown */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <StepHeader
+            currentStep="input"
+            saveStatus="idle"
+            currentMode={mode}
+            onModeSwitch={() => onSwitchToQuick?.()}
+          />
+
+          <div className="flex-1 px-4 pt-4 max-w-2xl mx-auto w-full pb-20 lg:pb-4">
+            {/* Entry cards */}
+            <div className="mb-5">
+              <p className="text-sm text-gray-500 mb-3">选择创作入口</p>
+              <div className="entry-cards-grid">
+                {TASK_ENTRY_CARDS.map((card) => (
+                  <button
+                    key={card.key}
+                    onClick={() => handleEntryClick(card.key)}
+                    className={`bg-white rounded-2xl border p-4 text-left transition-all hover:shadow-md ${
+                      selectedEntry === card.key
+                        ? "border-blue-400 ring-2 ring-blue-100"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="text-2xl mb-2">{card.icon}</div>
+                    <div className="font-semibold text-gray-800 text-sm">{card.title}</div>
+                    <div className="text-xs text-gray-400 mt-1">{card.desc}</div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 mb-5">
-            <div className="flex-1 h-px bg-gray-200" />
-            <span className="text-xs text-gray-400">或直接输入</span>
-            <div className="flex-1 h-px bg-gray-200" />
-          </div>
+            {/* Divider */}
+            <div className="flex items-center gap-3 mb-5">
+              <div className="flex-1 h-px bg-gray-200" />
+              <span className="text-xs text-gray-400">或直接输入</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
 
-          {/* Textarea */}
-          <div className="mb-4">
-            <textarea
-              value={sourceInput}
-              onChange={(e) => setSourceInput(e.target.value)}
-              placeholder="把你的一段素材、一句灵感、一个前提或一段草稿写下来…"
-              className="w-full min-h-32 p-4 bg-white border border-gray-200 rounded-2xl text-sm text-gray-800 placeholder-gray-300 resize-none outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-              style={{ fontFamily: "inherit" }}
+            {/* Textarea */}
+            <div className="mb-4">
+              <textarea
+                value={sourceInput}
+                onChange={(e) => setSourceInput(e.target.value)}
+                placeholder="把你的一段素材、一句灵感、一个前提或一段草稿写下来…"
+                className="w-full min-h-32 p-4 bg-white border border-gray-200 rounded-2xl text-sm text-gray-800 placeholder-gray-300 resize-none outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                style={{ fontFamily: "inherit" }}
+              />
+            </div>
+
+            {/* Submit button */}
+            <StickyPrimaryAction
+              label="开始创作"
+              onClick={handleSubmit}
+              disabled={!sourceInput.trim()}
             />
           </div>
 
-          {/* Submit button */}
-          <StickyPrimaryAction
-            label="开始创作"
-            onClick={handleSubmit}
-            disabled={!sourceInput.trim()}
-          />
+          <MobileBottomNav active={activeTab} onChange={setActiveTab} />
         </div>
 
-        <MobileBottomNav
-          active={activeTab}
-          onChange={setActiveTab}
-        />
+        {/* Desktop: Right panel */}
+        <div className="hidden lg:flex lg:flex-col lg:shrink-0">
+          <div className="desktop-right-panel flex flex-col bg-white">
+            <div className="px-4 py-4 border-b border-gray-100">
+              <p className="text-sm font-bold text-gray-700">创作状态</p>
+              <p className="text-xs text-gray-400 mt-0.5">选择入口开始创作</p>
+            </div>
+            <div className="px-4 py-4">
+              <p className="text-xs text-gray-400 mb-1.5">快速入口</p>
+              <div className="space-y-1.5">
+                {TASK_ENTRY_CARDS.map((card) => (
+                  <button
+                    key={card.key}
+                    onClick={() => handleEntryClick(card.key)}
+                    className="w-full flex items-center gap-2 px-2.5 py-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors text-left"
+                  >
+                    <span className="text-sm">{card.icon}</span>
+                    <span className="text-xs text-gray-700">{card.title}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
 
+        {/* Mobile drawer (bottom sheet) */}
         <JokeLibraryDrawer
           open={activeTab === "library"}
           onClose={() => setActiveTab("create")}
@@ -532,129 +565,141 @@ export default function GuidedWriteClient({
   // ─── Render: Active session ────────────────────────────────────────────────
 
   return (
-    <div className="write-shell flex flex-col min-h-screen bg-gray-50 pb-24 lg:pb-6">
-      <StepHeader
-        currentStep={session.currentStep}
-        saveStatus={session.saveStatus}
-        currentMode={mode}
-        onModeSwitch={() => onSwitchToQuick?.()}
-      />
+    <div className="write-shell flex flex-col min-h-screen bg-gray-50 lg:flex-row">
+      {/* Desktop: Left panel (段子库) */}
+      <div className="hidden lg:flex lg:flex-col lg:shrink-0">
+        <DesktopLeftPanel sessions={sessions} onRestore={handleRestore} onDelete={handleDelete} />
+      </div>
 
-      <div className="flex-1 px-4 pt-4 max-w-2xl mx-auto w-full space-y-4">
+      {/* Main content */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <StepHeader
+          currentStep={session.currentStep}
+          saveStatus={session.saveStatus}
+          currentMode={mode}
+          onModeSwitch={() => onSwitchToQuick?.()}
+        />
 
-        {/* Source input summary */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-3">
-          <p className="text-xs text-gray-400 mb-1">素材</p>
-          <p className="text-sm text-gray-700 leading-relaxed line-clamp-2">
-            {session.sourceInput}
-          </p>
-        </div>
+        <div className="flex-1 px-4 pt-4 max-w-2xl mx-auto w-full space-y-4 pb-24 lg:pb-6">
 
-        {/* Current step indicator */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm">{WORKFLOW_STEP_ICONS[session.currentStep]}</span>
-          <span className="text-sm font-medium text-gray-700">
-            {WORKFLOW_STEP_LABELS[session.currentStep]}
-          </span>
-          {session.inputType && (
-            <span className="text-xs text-gray-400 ml-1">
-              · {session.inputType}
+          {/* Source input summary */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-3">
+            <p className="text-xs text-gray-400 mb-1">素材</p>
+            <p className="text-sm text-gray-700 leading-relaxed line-clamp-2">
+              {session.sourceInput}
+            </p>
+          </div>
+
+          {/* Current step indicator */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm">{WORKFLOW_STEP_ICONS[session.currentStep]}</span>
+            <span className="text-sm font-medium text-gray-700">
+              {WORKFLOW_STEP_LABELS[session.currentStep]}
             </span>
+            {session.inputType && (
+              <span className="text-xs text-gray-400 ml-1">
+                · {session.inputType}
+              </span>
+            )}
+          </div>
+
+          {/* AI Output area */}
+          {generating || tokens || error ? (
+            <div className="space-y-3">
+              {/* Loading skeleton */}
+              {generating && generatingStep === session.currentStep && (
+                <WorkflowCardSkeleton step={session.currentStep} />
+              )}
+
+              {/* Token stream */}
+              {tokens && (
+                <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                  <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                    {tokens}
+                    <span className="inline-block w-2 h-4 bg-blue-400 ml-0.5 align-middle animate-pulse rounded-sm" />
+                  </div>
+                </div>
+              )}
+
+              {/* Error */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+                  <p className="text-sm text-red-600">⚠️ {error}</p>
+                </div>
+              )}
+
+              {/* Meta info */}
+              {(latencyMs || modelName) && (
+                <div className="flex items-center gap-2 text-xs text-gray-400">
+                  {modelName && <span>{modelName}</span>}
+                  {latencyMs && <span>{latencyMs}ms</span>}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {/* Cards from session */}
+          {session.cards.map((card) => (
+            <WorkflowCardComponent
+              key={card.id}
+              card={card}
+              onSelect={(c) => {
+                // Future: version tree navigation
+              }}
+            />
+          ))}
+
+          {/* Last card summary */}
+          {lastCard && (
+            <div className="bg-blue-50 border-l-4 border-blue-400 rounded-r-2xl p-3">
+              <p className="text-xs text-blue-600 font-medium mb-1">
+                {WORKFLOW_STEP_LABELS[lastCard.type]} 完成
+              </p>
+              <p className="text-sm text-gray-700 leading-relaxed line-clamp-3">
+                {lastCard.content.slice(0, 200)}
+                {lastCard.content.length > 200 && "…"}
+              </p>
+            </div>
           )}
         </div>
 
-        {/* AI Output area */}
-        {generating || tokens || error ? (
-          <div className="space-y-3">
-            {/* Loading skeleton */}
-            {generating && generatingStep === session.currentStep && (
-              <WorkflowCardSkeleton step={session.currentStep} />
-            )}
-
-            {/* Token stream */}
-            {tokens && (
-              <div className="bg-white rounded-2xl border border-gray-100 p-4">
-                <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                  {tokens}
-                  <span className="inline-block w-2 h-4 bg-blue-400 ml-0.5 align-middle animate-pulse rounded-sm" />
-                </div>
-              </div>
-            )}
-
-            {/* Error */}
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-                <p className="text-sm text-red-600">⚠️ {error}</p>
-              </div>
-            )}
-
-            {/* Meta info */}
-            {(latencyMs || modelName) && (
-              <div className="flex items-center gap-2 text-xs text-gray-400">
-                {modelName && <span>{modelName}</span>}
-                {latencyMs && <span>{latencyMs}ms</span>}
-              </div>
-            )}
-          </div>
-        ) : null}
-
-        {/* Cards from session */}
-        {session.cards.map((card) => (
-          <WorkflowCardComponent
-            key={card.id}
-            card={card}
-            onSelect={(c) => {
-              // Future: version tree navigation
-            }}
-          />
-        ))}
-
-        {/* Last card summary */}
-        {lastCard && (
-          <div className="bg-blue-50 border-l-4 border-blue-400 rounded-r-2xl p-3">
-            <p className="text-xs text-blue-600 font-medium mb-1">
-              {WORKFLOW_STEP_LABELS[lastCard.type]} 完成
-            </p>
-            <p className="text-sm text-gray-700 leading-relaxed line-clamp-3">
-              {lastCard.content.slice(0, 200)}
-              {lastCard.content.length > 200 && "…"}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Sticky bottom action */}
-      <div className="sticky bottom-0 left-0 right-0 bg-gray-50 border-t border-gray-100 px-4 pt-3 pb-4 safe-area-bottom">
-        <div className="max-w-2xl mx-auto">
-          <div className="flex gap-2">
-            <button
-              onClick={handleReset}
-              className="px-4 py-4 rounded-2xl border border-gray-200 text-gray-500 text-sm font-medium hover:bg-gray-100 transition-colors"
-            >
-              新建
-            </button>
-            <StickyPrimaryAction
-              label={nextButtonLabel}
-              onClick={() => {
-                if (error) {
-                  setError(null);
-                  if (session) runStep(session, session.currentStep);
-                  return;
-                }
-                handleNextStep();
-              }}
-              disabled={generating || (session.currentStep !== "input" && !lastCard && !tokens)}
-              loading={generating}
-            />
+        {/* Sticky bottom action */}
+        <div className="sticky bottom-0 left-0 right-0 bg-gray-50 border-t border-gray-100 px-4 pt-3 pb-4 safe-area-bottom">
+          <div className="max-w-2xl mx-auto">
+            <div className="flex gap-2">
+              <button
+                onClick={handleReset}
+                className="px-4 py-4 rounded-2xl border border-gray-200 text-gray-500 text-sm font-medium hover:bg-gray-100 transition-colors"
+              >
+                新建
+              </button>
+              <StickyPrimaryAction
+                label={nextButtonLabel}
+                onClick={() => {
+                  if (error) {
+                    setError(null);
+                    if (session) runStep(session, session.currentStep);
+                    return;
+                  }
+                  handleNextStep();
+                }}
+                disabled={generating || (session.currentStep !== "input" && !lastCard && !tokens)}
+                loading={generating}
+              />
+            </div>
           </div>
         </div>
       </div>
 
-      <MobileBottomNav
-        active={activeTab}
-        onChange={setActiveTab}
-      />
+      {/* Desktop: Right panel (Status/Context) */}
+      <div className="hidden lg:flex lg:flex-col lg:shrink-0">
+        <DesktopRightPanel session={session} cards={session?.cards ?? []} />
+      </div>
 
+      {/* Mobile bottom nav */}
+      <MobileBottomNav active={activeTab} onChange={setActiveTab} />
+
+      {/* Mobile drawer */}
       <JokeLibraryDrawer
         open={activeTab === "library"}
         onClose={() => setActiveTab("create")}
