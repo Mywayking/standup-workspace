@@ -41,6 +41,118 @@ const STATUS_COLORS: Record<string, string> = {
   mature:      "bg-indigo-100 text-indigo-700",
 };
 
+// ─── Session item sub-component ──────────────────────────────────────────────
+
+interface SessionItemProps {
+  session: WorkflowSession;
+  onRestore: (s: WorkflowSession) => void;
+  onDelete: (id: string) => void;
+  onAddToSet: (s: WorkflowSession) => void;
+}
+
+function SessionItem({ session, onRestore, onDelete, onAddToSet }: SessionItemProps) {
+  const [showMenu, setShowMenu] = useState(false);
+
+  return (
+    <div
+      className="p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-gray-200 transition-colors"
+      onBlur={() => setShowMenu(false)}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-gray-800 truncate">
+            {session.title || session.sourceInput.slice(0, 20) || "未命名"}
+          </p>
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            <span
+              className={`text-xs px-1.5 py-0.5 rounded-full ${
+                STATUS_COLORS[session.scriptStatus] ?? "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {SCRIPT_STATUS_LABELS[session.scriptStatus]}
+            </span>
+            <span className="text-xs text-gray-400">
+              → {NEXT_ACTION_BY_STATUS[session.scriptStatus]}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {/* 加入专场 action for mature scripts */}
+          {session.scriptStatus === "mature" && (
+            <button
+              onClick={() => onAddToSet(session)}
+              className="text-xs px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors"
+              title="加入专场"
+            >
+              +专场
+            </button>
+          )}
+          {/* 继续 — primary style */}
+          <button
+            onClick={() => onRestore(session)}
+            className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            继续
+          </button>
+          {/* More menu (delete) */}
+          <div className="relative">
+            <button
+              onClick={() => setShowMenu((v) => !v)}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              ⋮
+            </button>
+            {showMenu && (
+              <div className="absolute right-0 top-8 bg-white border border-gray-100 rounded-xl shadow-lg py-1 z-10 w-28">
+                <button
+                  onClick={() => { onDelete(session.id); setShowMenu(false); }}
+                  className="w-full text-left px-3 py-2 text-xs text-red-500 hover:bg-red-50 transition-colors"
+                >
+                  删除记录
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      <p className="text-xs text-gray-400 mt-1.5">
+        {new Date(session.updatedAt).toLocaleDateString("zh-CN", {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })}
+      </p>
+    </div>
+  );
+}
+
+// ─── Group sessions by date ────────────────────────────────────────────────────
+
+function groupSessions(list: WorkflowSession[]) {
+  const now = new Date();
+  const todayStr = now.toDateString();
+  const yesterdayStr = new Date(now.getTime() - 86400000).toDateString();
+  const groups: { label: string; sessions: WorkflowSession[] }[] = [];
+  let current: { label: string; sessions: WorkflowSession[] } | null = null;
+
+  for (const s of list) {
+    const d = new Date(s.updatedAt);
+    const dStr = d.toDateString();
+    let label = d.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
+    if (dStr === todayStr) label = "今天";
+    else if (dStr === yesterdayStr) label = "昨天";
+    if (!current || current.label !== label) {
+      current = { label, sessions: [] };
+      groups.push(current);
+    }
+    current.sessions.push(s);
+  }
+  return groups;
+}
+
+// ─── Main drawer ──────────────────────────────────────────────────────────────
+
 export default function JokeLibraryDrawer({
   open,
   onClose,
@@ -61,6 +173,8 @@ export default function JokeLibraryDrawer({
     ? sessions
     : sessions.filter((s) => s.scriptStatus === filter);
 
+  const grouped = groupSessions(filtered);
+
   const counts: Record<string, number> = { all: sessions.length };
   for (const s of sessions) {
     counts[s.scriptStatus] = (counts[s.scriptStatus] ?? 0) + 1;
@@ -68,7 +182,6 @@ export default function JokeLibraryDrawer({
 
   const handleAddToSet = (session: WorkflowSession, setId?: string) => {
     if (setId) {
-      // Add to existing set
       const updated = specialSets.map((s) =>
         s.id === setId
           ? { ...s, scriptIds: [...s.scriptIds, session.id], updatedAt: new Date().toISOString() }
@@ -77,7 +190,6 @@ export default function JokeLibraryDrawer({
       setSpecialSets(updated);
       saveSpecialSets(updated);
     } else {
-      // Show set picker
       setAddToSetSession(session);
     }
   };
@@ -96,6 +208,28 @@ export default function JokeLibraryDrawer({
     setSpecialSets(updated);
     saveSpecialSets(updated);
     setAddToSetSession(null);
+  };
+
+  const handleEmptyStateExample = () => {
+    const example = "我最近发现公司开会越来越像开放麦，大家都在等一个人讲完废话。";
+    const now = new Date().toISOString();
+    const fakeSession: WorkflowSession = {
+      id: genId("session"),
+      title: example.slice(0, 20) + "…",
+      sourceInput: example,
+      inputType: null,
+      currentStep: "input",
+      scriptStatus: "idea",
+      mode: "guided",
+      saveStatus: "idle",
+      syncStatus: "local_only",
+      rootCardIds: [],
+      cards: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    onRestore(fakeSession);
+    onClose();
   };
 
   return (
@@ -126,7 +260,7 @@ export default function JokeLibraryDrawer({
             <span className="text-xs text-gray-400">{sessions.length} 条</span>
           </div>
           <div className="flex items-center gap-1">
-            {/* 专场 tab (Phase 11) */}
+            {/* 专场 tab */}
             <button
               onClick={() => setShowSets((v) => !v)}
               className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
@@ -163,13 +297,12 @@ export default function JokeLibraryDrawer({
         </div>
 
         {/* Session list */}
-        <div className="overflow-y-auto flex-1 px-5 py-3 space-y-2">
-          {/* Special sets view (Phase 11) */}
+        <div className="overflow-y-auto flex-1 px-5 py-3 space-y-4">
+
+          {/* Special sets view */}
           {showSets && (
             <>
-              {/* Create new set */}
               <CreateSetForm onCreate={handleCreateSet} />
-
               {specialSets.length === 0 ? (
                 <div className="py-8 text-center text-sm text-gray-400">
                   还没有专场，创建一个吧
@@ -180,9 +313,7 @@ export default function JokeLibraryDrawer({
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-indigo-800">{s.title}</p>
-                        <p className="text-xs text-indigo-500 mt-0.5">
-                          {s.scriptIds.length} 个段子
-                        </p>
+                        <p className="text-xs text-indigo-500 mt-0.5">{s.scriptIds.length} 个段子</p>
                       </div>
                       <button
                         onClick={() => {
@@ -201,70 +332,43 @@ export default function JokeLibraryDrawer({
             </>
           )}
 
-          {/* Normal session list */}
-          {!showSets && (filtered.length === 0 ? (
-            <div className="py-12 text-center text-sm text-gray-400">
-              {filter === "all" ? "还没有创作记录" : "暂无此类段子"}
-            </div>
-          ) : (
-            filtered.map((session) => (
-              <div
-                key={session.id}
-                className="p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-gray-200 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-800 truncate">
-                      {session.title || session.sourceInput.slice(0, 20) || "未命名"}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      <span
-                        className={`text-xs px-1.5 py-0.5 rounded-full ${
-                          STATUS_COLORS[session.scriptStatus] ?? "bg-gray-100 text-gray-600"
-                        }`}
-                      >
-                        {SCRIPT_STATUS_LABELS[session.scriptStatus]}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        → {NEXT_ACTION_BY_STATUS[session.scriptStatus]}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex gap-1 shrink-0 flex-wrap justify-end">
-                    {/* 加入专场 action for mature scripts (Phase 11) */}
-                    {session.scriptStatus === "mature" && (
-                      <button
-                        onClick={() => handleAddToSet(session)}
-                        className="text-xs px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors"
-                        title="加入专场"
-                      >
-                        +专场
-                      </button>
-                    )}
-                    <button
-                      onClick={() => onRestore(session)}
-                      className="text-xs px-2 py-1 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-                    >
-                      继续
-                    </button>
-                    <button
-                      onClick={() => onDelete(session.id)}
-                      className="text-xs px-2 py-1 text-gray-400 hover:text-red-500 transition-colors"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400 mt-1.5">
-                  {new Date(session.updatedAt).toLocaleDateString("zh-CN", {
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+          {/* Empty state */}
+          {!showSets && filtered.length === 0 && (
+            <div className="py-8 text-center">
+              <p className="text-sm text-gray-500 font-medium mb-1">还没有创作记录</p>
+              <p className="text-xs text-gray-400 mb-4">你可以先丢一段生活素材进来，比如：</p>
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-left mb-4">
+                <p className="text-xs text-gray-600 italic">
+                  "我最近发现公司开会越来越像开放麦，大家都在等一个人讲完废话。"
                 </p>
               </div>
-            ))
+              <button
+                onClick={handleEmptyStateExample}
+                className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                用这个例子试试
+              </button>
+            </div>
+          )}
+
+          {/* Grouped session list */}
+          {!showSets && grouped.map((group) => (
+            <div key={group.label}>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                {group.label}
+              </p>
+              <div className="space-y-2">
+                {group.sessions.map((session) => (
+                  <SessionItem
+                    key={session.id}
+                    session={session}
+                    onRestore={onRestore}
+                    onDelete={onDelete}
+                    onAddToSet={handleAddToSet}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
 
@@ -286,7 +390,8 @@ export default function JokeLibraryDrawer({
   );
 }
 
-/** Create new special set form */
+// ─── CreateSetForm ────────────────────────────────────────────────────────────
+
 function CreateSetForm({ onCreate }: { onCreate: (title: string) => void }) {
   const [title, setTitle] = useState("");
 
@@ -319,7 +424,8 @@ function CreateSetForm({ onCreate }: { onCreate: (title: string) => void }) {
   );
 }
 
-/** Modal to add session to a special set */
+// ─── AddToSetModal ────────────────────────────────────────────────────────────
+
 function AddToSetModal({
   session,
   specialSets,

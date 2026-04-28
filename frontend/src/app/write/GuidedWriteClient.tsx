@@ -33,6 +33,8 @@ import type { ActionState } from "./types";
 import JokeLibraryDrawer from "./components/JokeLibraryDrawer";
 import VersionCompareDrawer from "./components/VersionCompareDrawer";
 import MobileBottomNav, { type Tab } from "./components/MobileBottomNav";
+import MobileBottomInput from "./components/MobileBottomInput";
+import { useToast } from "@/components/Toast";
 import DesktopLeftPanel from "./components/DesktopLeftPanel";
 import DesktopRightPanel from "./components/DesktopRightPanel";
 
@@ -212,11 +214,17 @@ export default function GuidedWriteClient({
   const [primaryAction, setPrimaryAction] = useState<ActionState>("idle");
   const [primaryActionMsg, setPrimaryActionMsg] = useState("");
 
+  // Toast hook
+  const { toast } = useToast();
+
   // Load sessions on mount
   useEffect(() => {
     setSessions(loadSessions());
     const active = loadActive();
-    if (active) setSession(active);
+    if (active) {
+      setSession(active);
+      // Restore silently — no toast on plain page load
+    }
   }, []);
 
   // Persist active session
@@ -256,7 +264,8 @@ export default function GuidedWriteClient({
       saveSession(updated);
       return updated;
     });
-  }, []);
+    toast("✅ 已保存，可在历史记录中查看", "success");
+  }, [toast]);
 
   // ── Determine parent card ID based on current step ──────────────────────
 
@@ -423,6 +432,7 @@ export default function GuidedWriteClient({
           );
           setPrimaryAction("error");
           setPrimaryActionMsg(err);
+          toast("❌ 保存失败，请重试", "error");
         },
       });
 
@@ -547,7 +557,8 @@ export default function GuidedWriteClient({
     setSession(s);
     setSourceInput(s.sourceInput);
     setActiveTab("create");
-  }, []);
+    toast("✅ 已恢复创作会话", "success");
+  }, [toast]);
 
   // ── Delete session ────────────────────────────────────────────────────────
 
@@ -594,8 +605,8 @@ export default function GuidedWriteClient({
             onModeSwitch={() => onSwitchToQuick?.()}
           />
 
-          <div className="flex-1 px-4 pt-4 max-w-2xl mx-auto w-full pb-20 lg:pb-4">
-            {/* Entry cards */}
+          {/* Entry cards — scrollable middle area */}
+          <div className="flex-1 overflow-y-auto px-4 pt-4 max-w-2xl mx-auto w-full">
             <div className="mb-5">
               <p className="text-sm text-gray-500 mb-3">选择创作入口</p>
               <div className="entry-cards-grid">
@@ -623,27 +634,18 @@ export default function GuidedWriteClient({
               <span className="text-xs text-gray-400">或直接输入</span>
               <div className="flex-1 h-px bg-gray-200" />
             </div>
-
-            {/* Textarea */}
-            <div className="mb-4">
-              <textarea
-                value={sourceInput}
-                onChange={(e) => setSourceInput(e.target.value)}
-                placeholder="把你的一段素材、一句灵感、一个前提或一段草稿写下来…"
-                className="w-full min-h-32 p-4 bg-white border border-gray-200 rounded-2xl text-sm text-gray-800 placeholder-gray-300 resize-none outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-                style={{ fontFamily: "inherit" }}
-              />
-            </div>
-
-            {/* Submit button */}
-            <StickyPrimaryAction
-              label={primaryAction === "pending" ? "创作中…" : primaryAction === "success" ? "✓ 已完成" : "开始创作"}
-              status={primaryAction}
-              statusMessage={primaryActionMsg}
-              onClick={handleSubmit}
-              disabled={!sourceInput.trim() || primaryAction === "pending"}
-            />
           </div>
+
+          {/* Sticky bottom input */}
+          <MobileBottomInput
+            value={sourceInput}
+            onChange={setSourceInput}
+            onSubmit={handleSubmit}
+            actionState={primaryAction}
+            actionLabel={primaryAction === "pending" ? "创作中…" : primaryAction === "success" ? "✓ 已完成" : "开始创作"}
+            actionMessage={primaryActionMsg}
+            placeholder="把你的一段素材、一句灵感、一个前提或一段草稿写下来…"
+          />
 
           <MobileBottomNav active={activeTab} onChange={setActiveTab} />
         </div>
