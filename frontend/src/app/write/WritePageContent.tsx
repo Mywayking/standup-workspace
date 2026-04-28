@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import GuidedWriteClient from "./GuidedWriteClient";
 import QuickToolsClient from "./QuickToolsClient";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -10,6 +11,12 @@ import { ToastProvider } from "@/components/Toast";
 // Washi UI is the new default — set NEXT_PUBLIC_USE_WASHI_WRITE="false" to revert
 const USE_WASHI = process.env.NEXT_PUBLIC_USE_WASHI_WRITE !== "false";
 
+// Dynamic import: SSR-safe (no localStorage access during SSR)
+const WashiWriteClient = dynamic(
+  () => import("./washi/WashiWriteClient").then((m) => m.WashiWriteClient),
+  { ssr: false }
+);
+
 export default function WritePageContent() {
   const [mode, setMode] = useState<"guided" | "quick">("guided");
 
@@ -18,8 +25,7 @@ export default function WritePageContent() {
       <WorkflowProvider>
         <ToastProvider>
           {USE_WASHI ? (
-            // Dynamic import to avoid SSR issues with localStorage
-            <WashiWriteClientWrapper />
+            <WashiWriteClient />
           ) : mode === "guided" ? (
             <GuidedWriteClient onSwitchToQuick={() => setMode("quick")} />
           ) : (
@@ -29,11 +35,4 @@ export default function WritePageContent() {
       </WorkflowProvider>
     </ErrorBoundary>
   );
-}
-
-// Separate component so we can use dynamic import
-function WashiWriteClientWrapper() {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { WashiWriteClient } = require("./washi/WashiWriteClient");
-  return <WashiWriteClient />;
 }
