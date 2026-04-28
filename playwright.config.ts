@@ -7,7 +7,7 @@ export default defineConfig({
   use: {
     headless: true,
     ignoreHTTPSErrors: true,
-    baseURL: 'https://ai.alwayshaha.art',
+    baseURL: process.env.E2E_BASE_URL ?? 'https://standup.alwayshaha.art',
   },
   reporter: [['list']],
   projects: [

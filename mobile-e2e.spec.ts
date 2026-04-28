@@ -6,7 +6,7 @@
 
 import { test, expect, Page } from '@playwright/test';
 
-const BASE = 'https://ai.alwayshaha.art/write';
+const BASE = 'process.env.E2E_BASE_URL ?? 'https://standup.alwayshaha.art/write'';
 
 test.describe('📱 Mobile /write Page - Core Layout', () => {
 
