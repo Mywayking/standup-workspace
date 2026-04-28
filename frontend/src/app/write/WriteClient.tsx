@@ -1194,7 +1194,7 @@ export default function WritePage({ initialText, sourcePath, onClearPending, onR
               <ellipse cx="16" cy="12" rx="6" ry="8" fill="white"/>
               <rect x="13" y="20" width="6" height="6" rx="1" fill="white"/>
               <rect x="14.5" y="26" width="3" height="2" rx="0.5" fill="white"/>
-              <rect x="10" y="8" width="12" height="3" rx="1.5" fill="none" stroke="white" stroke-width="1.5"/>
+              <rect x="10" y="8" width="12" height="3" rx="1.5" fill="none" stroke="white" strokeWidth={1.5}/>
             </svg>
             <div>
               <h1 className="text-lg sm:text-xl font-bold text-gray-800">喜剧写稿台</h1>
