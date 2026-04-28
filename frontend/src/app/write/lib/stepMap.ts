@@ -14,7 +14,7 @@ import type {
 // 步骤对应的后端 API 端点
 export const STEP_API_MAP: Record<WorkflowStep, string> = {
   input: "",
-  detect: "/api/write/detect-input",
+  detect: "/api/detect-input",
   material: "/api/write/premise/stream",
   premise: "/api/write/premise/stream",
   joke_to_premise: "/api/write/joke-to-premise/stream",

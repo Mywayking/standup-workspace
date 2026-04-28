@@ -130,6 +130,31 @@ async function streamText(
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+export function buildStepBody(step: WorkflowStep, sourceInput: string, selectedCardContent?: string): Record<string, unknown> {
+  switch (step) {
+    case "detect":
+      return { text: sourceInput };
+    case "material":
+    case "premise":
+      return { text: sourceInput };
+    case "joke_to_premise":
+      return { text: sourceInput };
+    case "angles":
+      // angles expects 'premise' field = the premise text from selected premise card
+      return { premise: selectedCardContent || sourceInput };
+    case "draft":
+      // draft uses selected card content as the premise
+      return { text: selectedCardContent || sourceInput };
+    case "rewrite":
+      // rewrite expects 'text' field with the draft/script content
+      return { text: selectedCardContent || sourceInput };
+    case "performance_review":
+      return { text: sourceInput };
+    default:
+      return { text: sourceInput };
+  }
+}
+
 export default function GuidedWriteClient({
   onSwitchToQuick,
 }: {
@@ -257,7 +282,13 @@ export default function GuidedWriteClient({
 
       let fullContent = "";
 
-      await streamText(endpoint, { text: s.sourceInput, source_path: s.cards.map((c) => c.type) }, {
+      let selectedCardContent: string | undefined;
+      if (step === "angles" || step === "rewrite" || step === "draft") {
+        const selected = s.cards[s.cards.length - 1];
+        selectedCardContent = selected?.content;
+      }
+      const body = buildStepBody(step, s.sourceInput, selectedCardContent);
+      await streamText(endpoint, body, {
         signal: controller.signal,
         onToken: (t) => {
           fullContent += t;
@@ -302,7 +333,7 @@ export default function GuidedWriteClient({
       const start = Date.now();
 
       let rawData = "";
-      await streamText("/api/write/detect-input", { text: input }, {
+      await streamText("/api/detect-input", { text: input }, {
         signal: controller.signal,
         onToken: (t) => { rawData += t; setTokens((p) => p + t); },
         onDone: () => {
