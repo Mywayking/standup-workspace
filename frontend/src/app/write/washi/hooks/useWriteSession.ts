@@ -1,0 +1,186 @@
+// ============================================================
+// hooks/useWriteSession.ts — 会话状态管理
+// Standup Workspace v3.0
+// ============================================================
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import type { WorkSession, WorkCard } from "../types";
+import { newWorkSession, generateSessionTitle } from "../types";
+import {
+  loadSessions,
+  saveSessions,
+  loadActive,
+  saveActive,
+  saveSession,
+  deleteSession,
+} from "./useLocalWriteStore";
+
+// ─── Hook ────────────────────────────────────────────────────
+
+export function useWriteSession() {
+  const [sessions, setSessions] = useState<WorkSession[]>([]);
+  const [activeSessionId, setActiveSessionIdState] = useState<string | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── 初始化加载 ─────────────────────────────────────────
+
+  useEffect(() => {
+    setSessions(loadSessions());
+    setActiveSessionIdState(loadActive());
+  }, []);
+
+  // ── 主动话 ID 持久化 ────────────────────────────────────
+
+  function setActiveSessionId(id: string | null) {
+    setActiveSessionIdState(id);
+    saveActive(id);
+  }
+
+  // ── 延迟保存（防抖） ───────────────────────────────────
+
+  function scheduleSave(newSessions: WorkSession[]) {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveSessions(newSessions);
+    }, 500);
+  }
+
+  // ── 创建新会话 ─────────────────────────────────────────
+
+  const createSession = useCallback(
+    (sourceInput: string): WorkSession => {
+      const session = newWorkSession(sourceInput);
+      setSessions((prev) => {
+        const next = [session, ...prev].slice(0, 100);
+        scheduleSave(next);
+        return next;
+      });
+      setActiveSessionId(session.id);
+      return session;
+    },
+    []
+  );
+
+  // ── 确保有活跃会话（空状态时自动创建） ─────────────────
+
+  const createSessionIfNeeded = useCallback((): WorkSession => {
+    if (!activeSessionId) {
+      return createSession("");
+    }
+    const existing = sessions.find((s) => s.id === activeSessionId);
+    if (existing) return existing;
+    return createSession("");
+  }, [activeSessionId, sessions, createSession]);
+
+  // ── 获取活跃会话 ───────────────────────────────────────
+
+  const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
+
+  // ── 获取活跃卡片 ───────────────────────────────────────
+
+  const activeCards: WorkCard[] = activeSession?.cards ?? [];
+
+  // ── 添加卡片 ────────────────────────────────────────────
+
+  const addCard = useCallback(
+    (card: WorkCard) => {
+      setSessions((prev) => {
+        const next = prev.map((s) => {
+          if (s.id !== card.sessionId) return s;
+          const updated: WorkSession = {
+            ...s,
+            cards: [...s.cards, card],
+            updatedAt: Date.now(),
+          };
+          saveSession(updated);
+          return updated;
+        });
+        scheduleSave(next);
+        return next;
+      });
+    },
+    []
+  );
+
+  // ── 更新卡片 ────────────────────────────────────────────
+
+  const updateCard = useCallback(
+    (sessionId: string, cardId: string, updates: Partial<WorkCard>) => {
+      setSessions((prev) => {
+        const next = prev.map((s) => {
+          if (s.id !== sessionId) return s;
+          const updated: WorkSession = {
+            ...s,
+            cards: s.cards.map((c) =>
+              c.id === cardId ? { ...c, ...updates, updatedAt: Date.now() } : c
+            ),
+            updatedAt: Date.now(),
+          };
+          saveSession(updated);
+          return updated;
+        });
+        scheduleSave(next);
+        return next;
+      });
+    },
+    []
+  );
+
+  // ── 删除会话 ───────────────────────────────────────────
+
+  const removeSession = useCallback(
+    (id: string) => {
+      deleteSession(id);
+      setSessions((prev) => {
+        const next = prev.filter((s) => s.id !== id);
+        scheduleSave(next);
+        return next;
+      });
+      if (activeSessionId === id) {
+        setActiveSessionId(null);
+      }
+    },
+    [activeSessionId]
+  );
+
+  // ── 重命名会话 ─────────────────────────────────────────
+
+  const renameSession = useCallback(
+    (id: string, title: string) => {
+      setSessions((prev) => {
+        const next = prev.map((s) => {
+          if (s.id !== id) return s;
+          const updated: WorkSession = { ...s, title, updatedAt: Date.now() };
+          saveSession(updated);
+          return updated;
+        });
+        scheduleSave(next);
+        return next;
+      });
+    },
+    []
+  );
+
+  // ── 切换活跃会话 ───────────────────────────────────────
+
+  const switchSession = useCallback(
+    (id: string) => {
+      setActiveSessionId(id);
+    },
+    []
+  );
+
+  return {
+    sessions,
+    activeSession,
+    activeSessionId,
+    activeCards,
+    createSession,
+    createSessionIfNeeded,
+    addCard,
+    updateCard,
+    removeSession,
+    renameSession,
+    setActiveSessionId: switchSession,
+  };
+}

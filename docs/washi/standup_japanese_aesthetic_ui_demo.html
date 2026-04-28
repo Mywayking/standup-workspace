@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Standup Workspace · 日式美学 UI Demo</title>
+  <style>
+    :root {
+      --rice: #f6f0e5;
+      --rice-2: #eee4d4;
+      --paper: #fbf7ee;
+      --sumi: #1d1c1a;
+      --ink: #35322d;
+      --muted: #81796c;
+      --light: #b7aa96;
+      --line: rgba(53, 50, 45, .13);
+      --line-strong: rgba(53, 50, 45, .22);
+      --vermillion: #b64b3a;
+      --moss: #596b55;
+      --indigo: #2d4059;
+      --sand: #d8c8ad;
+      --shadow: 0 18px 60px rgba(48, 40, 29, .10);
+      --shadow-soft: 0 8px 30px rgba(48, 40, 29, .07);
+      --radius-xl: 30px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --serif: "Songti SC", "STSong", "Noto Serif SC", "Hiragino Mincho ProN", Georgia, serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: var(--font);
+      background:
+        radial-gradient(circle at 14% 8%, rgba(182, 75, 58, .08), transparent 28%),
+        radial-gradient(circle at 84% 16%, rgba(89, 107, 85, .08), transparent 30%),
+        linear-gradient(135deg, var(--rice), var(--rice-2));
+      overflow: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .42;
+      background-image:
+        linear-gradient(90deg, rgba(53, 50, 45, .028) 1px, transparent 1px),
+        linear-gradient(rgba(53, 50, 45, .024) 1px, transparent 1px);
+      background-size: 38px 38px;
+      mask-image: radial-gradient(circle at 50% 50%, black, transparent 86%);
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .16;
+      background:
+        repeating-radial-gradient(circle at 30% 20%, rgba(53, 50, 45, .08) 0 1px, transparent 1px 7px);
+      mix-blend-mode: multiply;
+    }
+
+    .app {
+      height: 100vh;
+      padding: 18px;
+      display: grid;
+      grid-template-columns: 286px minmax(460px, 1fr) 330px;
+      gap: 14px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .panel {
+      min-height: 0;
+      overflow: hidden;
+      background: rgba(251, 247, 238, .76);
+      border: 1px solid rgba(53, 50, 45, .11);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .left {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand {
+      padding: 24px 22px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .seal {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      color: #fffaf0;
+      background: var(--vermillion);
+      border-radius: 13px;
+      font-family: var(--serif);
+      font-weight: 900;
+      letter-spacing: -.12em;
+      box-shadow: 0 10px 24px rgba(182, 75, 58, .18);
+    }
+
+    .brand h1 {
+      margin: 18px 0 8px;
+      font-family: var(--serif);
+      color: var(--sumi);
+      font-size: 27px;
+      line-height: 1.15;
+      letter-spacing: .03em;
+      font-weight: 700;
+    }
+
+    .brand p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.75;
+    }
+
+    .season-label {
+      margin-top: 16px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .15em;
+    }
+
+    .season-label::before {
+      content: "";
+      width: 26px;
+      height: 1px;
+      background: var(--vermillion);
+    }
+
+    .nav {
+      padding: 16px 14px 12px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .nav button {
+      border: 0;
+      border-radius: 18px;
+      background: transparent;
+      padding: 12px 14px;
+      color: var(--ink);
+      font: inherit;
+      text-align: left;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .nav button.active {
+      background: rgba(89, 107, 85, .10);
+      box-shadow: inset 0 0 0 1px rgba(89, 107, 85, .12);
+    }
+
+    .nav small {
+      color: var(--light);
+      font-size: 11px;
+    }
+
+    .section-title {
+      padding: 12px 22px 10px;
+      color: var(--light);
+      font-size: 11px;
+      letter-spacing: .18em;
+    }
+
+    .works {
+      padding: 0 14px 18px;
+      overflow: auto;
+    }
+
+    .work {
+      padding: 15px 14px;
+      margin-bottom: 10px;
+      border-radius: 20px;
+      border: 1px solid transparent;
+      background: rgba(255, 255, 255, .25);
+      cursor: pointer;
+      position: relative;
+    }
+
+    .work.active {
+      border-color: rgba(182, 75, 58, .18);
+      background: rgba(182, 75, 58, .055);
+    }
+
+    .work.active::before {
+      content: "";
+      position: absolute;
+      left: -1px;
+      top: 18px;
+      bottom: 18px;
+      width: 3px;
+      border-radius: 999px;
+      background: var(--vermillion);
+    }
+
+    .work h3 {
+      margin: 0 0 7px;
+      font-size: 14px;
+      font-weight: 650;
+      color: var(--sumi);
+      line-height: 1.45;
+    }
+
+    .work p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .tag {
+      margin-top: 10px;
+      display: inline-flex;
+      padding: 5px 9px;
+      border-radius: 999px;
+      background: rgba(45, 64, 89, .08);
+      color: var(--indigo);
+      font-size: 11px;
+    }
+
+    .main {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .topbar {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .topbar h2 {
+      margin: 0 0 6px;
+      color: var(--sumi);
+      font-size: 18px;
+      font-weight: 680;
+    }
+
+    .topbar p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .04em;
+    }
+
+    .status {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, .28);
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      background: var(--moss);
+      border-radius: 999px;
+    }
+
+    .chat {
+      overflow: auto;
+      padding: 24px;
+      display: grid;
+      align-content: start;
+      gap: 20px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: end;
+      padding: 28px;
+      min-height: 168px;
+      border-radius: 28px;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.48), rgba(255,255,255,.18)),
+        linear-gradient(90deg, rgba(182,75,58,.055), rgba(89,107,85,.06));
+      border: 1px solid rgba(53, 50, 45, .10);
+      box-shadow: var(--shadow-soft);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "間";
+      position: absolute;
+      right: 24px;
+      top: 10px;
+      font-family: var(--serif);
+      font-size: 112px;
+      color: rgba(53, 50, 45, .045);
+      line-height: 1;
+    }
+
+    .hero h2 {
+      position: relative;
+      z-index: 1;
+      margin: 0 0 12px;
+      max-width: 620px;
+      color: var(--sumi);
+      font-family: var(--serif);
+      font-size: 28px;
+      line-height: 1.35;
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+
+    .hero p {
+      position: relative;
+      z-index: 1;
+      margin: 0;
+      max-width: 670px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.85;
+    }
+
+    .vertical {
+      writing-mode: vertical-rl;
+      letter-spacing: .18em;
+      color: var(--vermillion);
+      font-family: var(--serif);
+      font-size: 14px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .msg {
+      display: flex;
+      gap: 13px;
+      align-items: flex-start;
+    }
+
+    .avatar {
+      flex: 0 0 36px;
+      width: 36px;
+      height: 36px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: var(--sumi);
+      color: var(--paper);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .avatar.ai {
+      background: var(--paper);
+      color: var(--vermillion);
+      border: 1px solid rgba(182, 75, 58, .22);
+      font-family: var(--serif);
+      font-size: 17px;
+    }
+
+    .bubble {
+      max-width: 780px;
+      padding: 15px 17px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, .34);
+      border: 1px solid rgba(53, 50, 45, .08);
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.85;
+    }
+
+    .bubble.user {
+      background: rgba(89, 107, 85, .075);
+    }
+
+    .card {
+      max-width: 830px;
+      background: rgba(251, 247, 238, .94);
+      border: 1px solid rgba(53, 50, 45, .12);
+      border-radius: 26px;
+      box-shadow: var(--shadow-soft);
+      overflow: hidden;
+    }
+
+    .card-head {
+      padding: 17px 20px;
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(90deg, rgba(182,75,58,.045), rgba(89,107,85,.035));
+    }
+
+    .kicker {
+      color: var(--light);
+      font-size: 11px;
+      letter-spacing: .16em;
+    }
+
+    .card-title {
+      margin: 5px 0 0;
+      color: var(--sumi);
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .stamp {
+      display: grid;
+      place-items: center;
+      flex: 0 0 48px;
+      width: 48px;
+      height: 48px;
+      border: 1px solid rgba(182, 75, 58, .35);
+      color: var(--vermillion);
+      border-radius: 50%;
+      font-family: var(--serif);
+      font-size: 12px;
+      line-height: 1.2;
+      transform: rotate(-8deg);
+    }
+
+    .card-body {
+      padding: 20px;
+    }
+
+    .premise {
+      margin: 0 0 18px;
+      padding: 18px 18px 18px 20px;
+      border-left: 3px solid var(--vermillion);
+      background: rgba(182, 75, 58, .045);
+      border-radius: 0 18px 18px 0;
+      font-family: var(--serif);
+      color: var(--sumi);
+      font-size: 17px;
+      line-height: 1.9;
+    }
+
+    .angles {
+      display: grid;
+      gap: 10px;
+      margin: 0 0 18px;
+    }
+
+    .angle {
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 12px;
+      padding: 13px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, .38);
+      border: 1px solid rgba(53, 50, 45, .07);
+    }
+
+    .num {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      border: 1px solid var(--line-strong);
+      color: var(--muted);
+      font-family: var(--serif);
+    }
+
+    .angle strong {
+      color: var(--sumi);
+    }
+
+    .angle div:last-child {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      padding-top: 2px;
+    }
+
+    .action {
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      padding: 10px 14px;
+      background: var(--sumi);
+      color: var(--paper);
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .action.secondary {
+      background: transparent;
+      color: var(--ink);
+    }
+
+    .composer {
+      padding: 15px;
+      border-top: 1px solid var(--line);
+      background: rgba(246, 240, 229, .78);
+    }
+
+    .quick {
+      display: flex;
+      gap: 8px;
+      overflow: auto;
+      padding: 0 3px 11px;
+    }
+
+    .quick button {
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: rgba(255, 255, 255, .32);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 12px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .input {
+      border: 1px solid var(--line-strong);
+      background: rgba(255, 255, 255, .42);
+      border-radius: 24px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      padding: 10px 10px 10px 17px;
+      align-items: end;
+    }
+
+    textarea {
+      min-height: 48px;
+      max-height: 120px;
+      resize: none;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--sumi);
+      font: inherit;
+      line-height: 1.55;
+    }
+
+    textarea::placeholder {
+      color: var(--light);
+    }
+
+    .send {
+      border: 0;
+      border-radius: 17px;
+      padding: 13px 17px;
+      background: var(--vermillion);
+      color: #fffaf0;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 12px 22px rgba(182, 75, 58, .16);
+    }
+
+    .right {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .right-head {
+      padding: 22px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .right-head h2 {
+      margin: 0 0 8px;
+      color: var(--sumi);
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .right-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.75;
+    }
+
+    .score {
+      margin: 18px 18px 8px;
+      padding: 20px;
+      border-radius: 24px;
+      background:
+        linear-gradient(135deg, rgba(89,107,85,.08), rgba(255,255,255,.28));
+      border: 1px solid rgba(89, 107, 85, .13);
+    }
+
+    .score-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .score strong {
+      color: var(--sumi);
+      font-size: 28px;
+      font-family: var(--serif);
+      font-weight: 700;
+    }
+
+    .enso {
+      width: 58px;
+      height: 58px;
+      border: 4px solid rgba(182, 75, 58, .7);
+      border-right-color: rgba(182, 75, 58, .12);
+      border-bottom-color: rgba(182, 75, 58, .32);
+      border-radius: 50%;
+      transform: rotate(-18deg);
+    }
+
+    .score p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.65;
+    }
+
+    .steps {
+      padding: 6px 22px 18px;
+      overflow: auto;
+    }
+
+    .step {
+      padding: 14px 0 14px 24px;
+      position: relative;
+    }
+
+    .step::before {
+      content: "";
+      position: absolute;
+      left: 6px;
+      top: 25px;
+      bottom: -12px;
+      width: 1px;
+      background: var(--line);
+    }
+
+    .step:last-child::before { display: none; }
+
+    .step::after {
+      content: "";
+      position: absolute;
+      left: 1px;
+      top: 19px;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--sand);
+      box-shadow: 0 0 0 5px rgba(216, 200, 173, .22);
+    }
+
+    .step.done::after {
+      background: var(--moss);
+      box-shadow: 0 0 0 5px rgba(89, 107, 85, .12);
+    }
+
+    .step.current::after {
+      background: var(--vermillion);
+      box-shadow: 0 0 0 5px rgba(182, 75, 58, .12);
+    }
+
+    .step h4 {
+      margin: 0 0 5px;
+      color: var(--sumi);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.65;
+    }
+
+    .meta {
+      margin: auto 18px 18px;
+      padding: 16px;
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, .28);
+    }
+
+    .meta h4 {
+      margin: 0 0 10px;
+      color: var(--sumi);
+      font-size: 13px;
+    }
+
+    .metric {
+      display: flex;
+      justify-content: space-between;
+      padding: 9px 0;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .metric strong {
+      color: var(--sumi);
+      font-weight: 700;
+    }
+
+    .mobile-bar {
+      display: none;
+    }
+
+    @media (max-width: 1080px) {
+      body {
+        overflow: auto;
+      }
+
+      .app {
+        height: auto;
+        min-height: 100vh;
+        grid-template-columns: 1fr;
+        padding: 10px;
+      }
+
+      .left, .right {
+        display: none;
+      }
+
+      .main {
+        min-height: calc(100vh - 20px);
+      }
+
+      .status {
+        display: none;
+      }
+
+      .mobile-bar {
+        display: flex;
+        gap: 8px;
+      }
+
+      .topbar {
+        padding: 16px;
+      }
+
+      .chat {
+        padding: 16px;
+      }
+
+      .hero {
+        grid-template-columns: 1fr;
+        padding: 22px;
+      }
+
+      .vertical {
+        writing-mode: horizontal-tb;
+      }
+
+      .hero h2 {
+        font-size: 23px;
+      }
+
+      .msg {
+        gap: 9px;
+      }
+
+      .avatar {
+        width: 32px;
+        height: 32px;
+        flex-basis: 32px;
+      }
+
+      .bubble {
+        font-size: 13px;
+        padding: 13px 14px;
+      }
+
+      .card {
+        border-radius: 22px;
+      }
+
+      .card-body {
+        padding: 16px;
+      }
+
+      .premise {
+        font-size: 15px;
+        padding: 15px;
+      }
+
+      .actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .composer {
+        position: sticky;
+        bottom: 0;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .app { padding: 0; }
+      .panel {
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
+      }
+
+      .main {
+        min-height: 100vh;
+      }
+
+      .topbar h2 {
+        font-size: 16px;
+      }
+
+      .topbar p {
+        display: none;
+      }
+
+      .hero {
+        min-height: auto;
+        border-radius: 22px;
+      }
+
+      .hero h2 {
+        font-size: 21px;
+      }
+
+      .hero p {
+        font-size: 13px;
+      }
+
+      .card-head {
+        padding: 14px 15px;
+      }
+
+      .stamp {
+        display: none;
+      }
+
+      .angle {
+        grid-template-columns: 28px 1fr;
+      }
+
+      .num {
+        width: 28px;
+        height: 28px;
+      }
+
+      .actions {
+        grid-template-columns: 1fr;
+      }
+
+      .input {
+        border-radius: 21px;
+      }
+
+      .send {
+        padding: 12px 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="panel left">
+      <div class="brand">
+        <div class="seal">笑</div>
+        <h1>余白<br/>写作室</h1>
+        <p>一个为脱口秀演员准备的安静创作空间。少一点按钮，多一点作品。</p>
+        <div class="season-label">COMEDY ART SEASON</div>
+      </div>
+
+      <nav class="nav">
+        <button class="active">今日写作 <small>12</small></button>
+        <button>作品集 <small>38</small></button>
+        <button>素材匣 <small>126</small></button>
+        <button>演后记 <small>7</small></button>
+      </nav>
+
+      <div class="section-title">CURRENT WORKS</div>
+      <div class="works">
+        <div class="work active">
+          <h3>职场裁员与主人翁意识</h3>
+          <p>从一句吐槽，发展成开放麦 3 分钟。</p>
+          <span class="tag">正在改稿</span>
+        </div>
+        <div class="work">
+          <h3>AI 算法与大数据杀熟</h3>
+          <p>科技公司专场，已有两个可演版本。</p>
+          <span class="tag">可演出</span>
+        </div>
+        <div class="work">
+          <h3>外公偏心故事</h3>
+          <p>家庭关系、荒谬归因、自嘲。</p>
+          <span class="tag">待试演</span>
+        </div>
+        <div class="work">
+          <h3>互联网黑话翻译器</h3>
+          <p>降本增效，组织升级，拥抱变化。</p>
+          <span class="tag">素材</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="panel main">
+      <header class="topbar">
+        <div>
+          <h2>职场裁员与主人翁意识</h2>
+          <p>静默保存 · 对话创作 · 作品链路</p>
+        </div>
+        <div class="status">
+          <span class="pill"><span class="dot"></span> 已保存</span>
+          <span class="pill">GLM-5 · 2.1s</span>
+          <span class="pill">开放麦版</span>
+        </div>
+        <div class="mobile-bar">
+          <span class="pill">作品</span>
+          <span class="pill">结构</span>
+        </div>
+      </header>
+
+      <section class="chat">
+        <div class="hero">
+          <div>
+            <h2>把一个念头，慢慢写成能上台的东西。</h2>
+            <p>日式美学版本不再追求热闹，而是用留白、纸张、细线条和低饱和色，让创作界面变得克制、安静、有质感。它更像一间演员的写作室，而不是一个 AI 工具站。</p>
+          </div>
+          <div class="vertical">一稿一会</div>
+        </div>
+
+        <div class="msg">
+          <div class="avatar">我</div>
+          <div class="bubble user">
+            老板说我们要有主人翁意识，但公司裁员的时候又说我是外包。这个素材怎么写？
+          </div>
+        </div>
+
+        <div class="msg">
+          <div class="avatar ai">余</div>
+          <div class="bubble">
+            这是一个很清楚的「身份错位」素材。它的笑点不在于抱怨裁员，而在于：公司在不同语境里，随时切换你是谁。
+          </div>
+        </div>
+
+        <div class="msg">
+          <div class="avatar ai">稿</div>
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <div class="kicker">PREMISE CARD</div>
+                <div class="card-title">前提卡 · 责任像主人，权益像租客</div>
+              </div>
+              <div class="stamp">入稿</div>
+            </div>
+            <div class="card-body">
+              <p class="premise">
+                公司希望你在承担责任时像主人，在分配利益、裁员风险和组织归属时像临时租客。
+              </p>
+
+              <div class="angles">
+                <div class="angle">
+                  <div class="num">一</div>
+                  <div><strong>房东体验卡</strong><br/>主人翁意识像房东体验卡：你负责维护房子，但房租照交，房产证没有你。</div>
+                </div>
+                <div class="angle">
+                  <div class="num">二</div>
+                  <div><strong>黑话翻译</strong><br/>“拥抱变化”不是一种企业文化，是一种温柔的搬家通知。</div>
+                </div>
+                <div class="angle">
+                  <div class="num">三</div>
+                  <div><strong>身份切换</strong><br/>开会时你是主人翁，裁员时你是外包，发奖金时你是空气。</div>
+                </div>
+              </div>
+
+              <div class="actions">
+                <button class="action">扩成 1 分钟</button>
+                <button class="action secondary">更克制一点</button>
+                <button class="action secondary">更毒舌一点</button>
+                <button class="action secondary">加入真实细节</button>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="msg">
+          <div class="avatar ai">余</div>
+          <div class="bubble">
+            推荐下一步：先补一个真实细节，比如“门禁权限、飞书群、工牌颜色、绩效会议”。日式界面的克制感，也会帮助用户把注意力放回文本本身。
+          </div>
+        </div>
+      </section>
+
+      <footer class="composer">
+        <div class="quick">
+          <button>输入素材</button>
+          <button>提炼前提</button>
+          <button>找角度</button>
+          <button>改成开放麦口语</button>
+          <button>生成演出版</button>
+          <button>记录反馈</button>
+        </div>
+        <div class="input">
+          <textarea placeholder="写下一个素材、一个念头，或者一句还没成熟的梗。"></textarea>
+          <button class="send">写作</button>
+        </div>
+      </footer>
+    </main>
+
+    <aside class="panel right">
+      <div class="right-head">
+        <h2>作品脉络</h2>
+        <p>不做复杂树状图，只保留用户当下最需要的创作路径。</p>
+      </div>
+
+      <div class="score">
+        <div class="score-top">
+          <div>
+            <span style="color:var(--muted);font-size:12px;">开放麦准备度</span><br/>
+            <strong>72%</strong>
+          </div>
+          <div class="enso"></div>
+        </div>
+        <p>已有清晰前提和三个角度，还需要一个生活细节和一个更稳定的落点。</p>
+      </div>
+
+      <div class="steps">
+        <div class="step done">
+          <h4>原始素材</h4>
+          <p>主人翁意识与外包身份的冲突。</p>
+        </div>
+        <div class="step done">
+          <h4>前提</h4>
+          <p>责任像主人，权益像租客。</p>
+        </div>
+        <div class="step current">
+          <h4>角度</h4>
+          <p>房东体验卡、黑话翻译、身份切换。</p>
+        </div>
+        <div class="step">
+          <h4>草稿</h4>
+          <p>下一步扩写成 1 分钟开放麦稿。</p>
+        </div>
+        <div class="step">
+          <h4>演后记</h4>
+          <p>记录笑点、冷点和观众反应。</p>
+        </div>
+      </div>
+
+      <div class="meta">
+        <h4>创作资产</h4>
+        <div class="metric"><span>前提版本</span><strong>3</strong></div>
+        <div class="metric"><span>角度卡</span><strong>9</strong></div>
+        <div class="metric"><span>可演句子</span><strong>4</strong></div>
+        <div class="metric"><span>改稿历史</span><strong>12</strong></div>
+      </div>
+    </aside>
+  </div>
+</body>
+</html>

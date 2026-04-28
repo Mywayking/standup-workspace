@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Standup Workspace · Responsive Washi Demo</title>
+  <style>
+    :root {
+      --bg: #f5efe3;
+      --paper: #fbf8f0;
+      --paper-soft: #f0e7d8;
+      --ink: #25231f;
+      --muted: #8a8174;
+      --light: #c5baaa;
+      --line: rgba(37, 35, 31, .10);
+      --line-2: rgba(37, 35, 31, .16);
+      --red: #a94737;
+      --moss: #68715f;
+      --shadow: 0 18px 54px rgba(65, 52, 36, .08);
+      --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --serif: "Songti SC", "STSong", "Noto Serif SC", "Hiragino Mincho ProN", Georgia, serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: var(--font);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 20% 8%, rgba(169, 71, 55, .045), transparent 30%),
+        linear-gradient(135deg, var(--bg), #eee4d3);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .16;
+      background-image: radial-gradient(rgba(37,35,31,.22) .45px, transparent .45px);
+      background-size: 7px 7px;
+      mix-blend-mode: multiply;
+    }
+
+    .app {
+      min-height: 100svh;
+      position: relative;
+      z-index: 1;
+    }
+
+    .shell {
+      min-height: 100svh;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      background: rgba(251, 248, 240, .86);
+    }
+
+    .panel {
+      min-height: 0;
+      overflow: hidden;
+      background: rgba(251, 248, 240, .84);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+
+    .sidebar,
+    .outline {
+      display: none;
+    }
+
+    .main {
+      min-width: 0;
+      min-height: 100svh;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      background: rgba(251, 248, 240, .92);
+    }
+
+    .topbar {
+      padding: 14px 14px 12px;
+      border-bottom: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      background: rgba(251, 248, 240, .94);
+    }
+
+    .icon-btn {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.28);
+      color: var(--muted);
+      border-radius: 999px;
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      font-size: 15px;
+    }
+
+    .title h1 {
+      margin: 0;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 600;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .title p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .desktop-status {
+      display: none;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .pill {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      background: rgba(255,255,255,.24);
+      white-space: nowrap;
+    }
+
+    .chat {
+      min-height: 0;
+      overflow: auto;
+      padding: 14px;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .intro {
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255,255,255,.28);
+    }
+
+    .intro h2 {
+      margin: 0 0 10px;
+      font-family: var(--serif);
+      font-size: 22px;
+      line-height: 1.45;
+      font-weight: 500;
+      letter-spacing: .03em;
+    }
+
+    .intro p {
+      margin: 0;
+      max-width: 680px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.85;
+    }
+
+    .msg {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr);
+      gap: 9px;
+      align-items: start;
+    }
+
+    .avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--paper-soft);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .avatar.ai {
+      color: var(--red);
+      background: rgba(169, 71, 55, .06);
+    }
+
+    .bubble {
+      max-width: 760px;
+      padding: 12px 13px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.32);
+      border: 1px solid var(--line);
+      color: var(--ink);
+      font-size: 13px;
+      line-height: 1.8;
+    }
+
+    .bubble.user {
+      background: rgba(104, 113, 95, .055);
+    }
+
+    .card {
+      max-width: 800px;
+      border: 1px solid var(--line-2);
+      border-radius: 22px;
+      background: rgba(251,248,240,.96);
+      overflow: hidden;
+    }
+
+    .card-head {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .kicker {
+      color: var(--light);
+      font-size: 11px;
+      letter-spacing: .12em;
+      margin-bottom: 5px;
+    }
+
+    .card-head h3 {
+      margin: 0;
+      color: var(--ink);
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .seal {
+      width: 34px;
+      height: 34px;
+      display: none;
+      place-items: center;
+      border: 1px solid rgba(169, 71, 55, .28);
+      color: var(--red);
+      border-radius: 50%;
+      font-family: var(--serif);
+      font-size: 12px;
+      flex: 0 0 34px;
+    }
+
+    .card-body {
+      padding: 14px;
+    }
+
+    .premise {
+      margin: 0 0 16px;
+      padding: 0 0 0 14px;
+      border-left: 2px solid var(--red);
+      font-family: var(--serif);
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 1.85;
+    }
+
+    .angles {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .angle {
+      padding: 12px 0;
+      border-top: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: 30px 1fr;
+      gap: 10px;
+    }
+
+    .angle:first-child { border-top: 0; }
+
+    .num {
+      color: var(--light);
+      font-family: var(--serif);
+      font-size: 15px;
+      padding-top: 1px;
+    }
+
+    .angle strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    .angle p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      padding-top: 2px;
+    }
+
+    .action {
+      border: 1px solid var(--line-2);
+      background: var(--ink);
+      color: var(--paper);
+      border-radius: 999px;
+      padding: 9px 13px;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .action.secondary {
+      background: transparent;
+      color: var(--muted);
+    }
+
+    .composer {
+      padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line);
+      background: rgba(251,248,240,.95);
+      position: sticky;
+      bottom: 0;
+    }
+
+    .quick {
+      display: flex;
+      gap: 7px;
+      overflow: auto;
+      padding: 0 2px 10px;
+      scrollbar-width: none;
+    }
+
+    .quick::-webkit-scrollbar { display: none; }
+
+    .quick button {
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 12px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .input {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: end;
+      padding: 9px 9px 9px 13px;
+      border: 1px solid var(--line-2);
+      border-radius: 18px;
+      background: rgba(255,255,255,.30);
+    }
+
+    textarea {
+      min-height: 42px;
+      max-height: 120px;
+      resize: none;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      line-height: 1.55;
+    }
+
+    textarea::placeholder { color: var(--light); }
+
+    .send {
+      border: 0;
+      background: var(--red);
+      color: #fffaf4;
+      border-radius: 14px;
+      padding: 11px 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .brand {
+      padding: 24px 22px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--red);
+    }
+
+    .brand-row span {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .12em;
+    }
+
+    .brand h2 {
+      margin: 0;
+      color: var(--ink);
+      font-family: var(--serif);
+      font-size: 25px;
+      line-height: 1.25;
+      font-weight: 600;
+      letter-spacing: .04em;
+    }
+
+    .brand p {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.75;
+    }
+
+    .nav {
+      padding: 14px 12px 8px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .nav button {
+      border: 0;
+      background: transparent;
+      border-radius: 14px;
+      padding: 11px 12px;
+      color: var(--muted);
+      text-align: left;
+      font: inherit;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+
+    .nav button.active {
+      background: rgba(169, 71, 55, .065);
+      color: var(--ink);
+    }
+
+    .nav small { color: var(--light); }
+
+    .section-title {
+      padding: 12px 22px 8px;
+      color: var(--light);
+      font-size: 11px;
+      letter-spacing: .12em;
+    }
+
+    .works {
+      padding: 0 12px 16px;
+      overflow: auto;
+    }
+
+    .work {
+      padding: 13px 12px;
+      border-radius: 16px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      margin-bottom: 6px;
+    }
+
+    .work.active {
+      background: rgba(255, 255, 255, .34);
+      border-color: var(--line);
+    }
+
+    .work h3 {
+      margin: 0 0 6px;
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.45;
+      font-weight: 600;
+    }
+
+    .work p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .right-head {
+      padding: 22px 20px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .right-head h2 {
+      margin: 0 0 8px;
+      color: var(--ink);
+      font-size: 17px;
+      font-weight: 600;
+    }
+
+    .right-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .readiness {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .readiness-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 10px;
+    }
+
+    .readiness-row span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .readiness-row strong {
+      font-family: var(--serif);
+      font-size: 30px;
+      font-weight: 500;
+      color: var(--ink);
+    }
+
+    .bar {
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(37,35,31,.08);
+      overflow: hidden;
+    }
+
+    .bar div {
+      width: 72%;
+      height: 100%;
+      background: var(--moss);
+      border-radius: inherit;
+    }
+
+    .steps {
+      padding: 14px 20px;
+      overflow: auto;
+    }
+
+    .step {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .step:last-child { border-bottom: 0; }
+
+    .step small {
+      color: var(--light);
+      font-size: 11px;
+    }
+
+    .step h4 {
+      margin: 6px 0 5px;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .step.current h4::after {
+      content: "";
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin-left: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      vertical-align: middle;
+    }
+
+    .meta {
+      margin-top: auto;
+      padding: 16px 20px 20px;
+      border-top: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .metric {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 5px;
+      color: var(--ink);
+      font-size: 18px;
+      font-family: var(--serif);
+      font-weight: 500;
+    }
+
+    .drawer,
+    .sheet,
+    .backdrop {
+      display: none;
+    }
+
+    @media (min-width: 768px) {
+      .app {
+        min-height: 100dvh;
+        padding: 18px;
+      }
+
+      .shell {
+        height: calc(100dvh - 36px);
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 248px minmax(0, 1fr);
+        gap: 12px;
+        background: transparent;
+      }
+
+      .sidebar {
+        display: flex;
+        min-height: 0;
+        flex-direction: column;
+        border-radius: 24px;
+      }
+
+      .main {
+        min-height: 0;
+        height: 100%;
+        border-radius: 24px;
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow);
+      }
+
+      .topbar {
+        padding: 18px 22px;
+      }
+
+      .left-open,
+      .right-open {
+        display: none;
+      }
+
+      .desktop-status {
+        display: flex;
+      }
+
+      .title h1 {
+        font-size: 17px;
+      }
+
+      .title p {
+        font-size: 12px;
+      }
+
+      .chat {
+        padding: 22px;
+        gap: 18px;
+      }
+
+      .intro {
+        padding: 26px;
+      }
+
+      .intro h2 {
+        font-size: 25px;
+      }
+
+      .intro p {
+        font-size: 14px;
+      }
+
+      .msg {
+        grid-template-columns: 34px minmax(0, 1fr);
+        gap: 12px;
+      }
+
+      .avatar {
+        width: 34px;
+        height: 34px;
+      }
+
+      .bubble {
+        padding: 13px 15px;
+        font-size: 14px;
+      }
+
+      .seal {
+        display: grid;
+      }
+
+      .card-body {
+        padding: 18px;
+      }
+
+      .premise {
+        font-size: 17px;
+      }
+
+      .angle {
+        grid-template-columns: 34px 1fr;
+        gap: 12px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+      }
+
+      .composer {
+        padding: 14px;
+      }
+
+      .input {
+        border-radius: 20px;
+        gap: 10px;
+        padding: 10px 10px 10px 15px;
+      }
+
+      .send {
+        padding: 12px 15px;
+        border-radius: 15px;
+      }
+    }
+
+    @media (min-width: 1180px) {
+      .shell {
+        grid-template-columns: 248px minmax(0, 1fr) 288px;
+      }
+
+      .outline {
+        display: flex;
+        min-height: 0;
+        flex-direction: column;
+        border-radius: 24px;
+      }
+    }
+
+    .backdrop.active {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      background: rgba(37,35,31,.22);
+      backdrop-filter: blur(4px);
+    }
+
+    .drawer.active {
+      display: flex;
+      position: fixed;
+      z-index: 30;
+      inset: 0 auto 0 0;
+      width: min(82vw, 320px);
+      flex-direction: column;
+      background: var(--paper);
+      border-right: 1px solid var(--line);
+      box-shadow: 18px 0 50px rgba(65,52,36,.16);
+      animation: slideIn .18s ease-out;
+    }
+
+    .sheet.active {
+      display: flex;
+      position: fixed;
+      z-index: 31;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      max-height: min(76svh, 620px);
+      flex-direction: column;
+      background: var(--paper);
+      border-radius: 24px 24px 0 0;
+      border-top: 1px solid var(--line);
+      box-shadow: 0 -18px 50px rgba(65,52,36,.16);
+      padding-bottom: env(safe-area-inset-bottom);
+      animation: sheetIn .18s ease-out;
+    }
+
+    .drawer-head,
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .close {
+      border: 1px solid var(--line);
+      background: transparent;
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateX(-100%); }
+      to { transform: translateX(0); }
+    }
+
+    @keyframes sheetIn {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="shell">
+      <aside class="panel sidebar">
+        <div class="brand">
+          <div class="brand-row">
+            <div class="mark"></div>
+            <span>WASHI STUDIO</span>
+          </div>
+          <h2>余白写作室</h2>
+          <p>安静地整理素材，慢慢写成能上台的段子。</p>
+        </div>
+
+        <nav class="nav">
+          <button class="active"><span>今日写作</span><small>12</small></button>
+          <button><span>作品集</span><small>38</small></button>
+          <button><span>素材匣</span><small>126</small></button>
+          <button><span>演后记</span><small>7</small></button>
+        </nav>
+
+        <div class="section-title">作品</div>
+        <div class="works">
+          <article class="work active">
+            <h3>职场裁员与主人翁意识</h3>
+            <p>从一句吐槽扩展成 3 分钟开放麦。</p>
+          </article>
+          <article class="work">
+            <h3>AI 算法与大数据杀熟</h3>
+            <p>科技公司专场候选稿。</p>
+          </article>
+          <article class="work">
+            <h3>外公偏心故事</h3>
+            <p>家庭关系、自嘲、荒谬归因。</p>
+          </article>
+          <article class="work">
+            <h3>互联网黑话翻译器</h3>
+            <p>降本增效，组织升级，拥抱变化。</p>
+          </article>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <button class="icon-btn left-open" aria-label="打开作品列表">☰</button>
+          <div class="title">
+            <h1>职场裁员与主人翁意识</h1>
+            <p>一套页面 · 响应式布局 · ChatGPT + Notion 交互</p>
+          </div>
+          <div class="desktop-status">
+            <span class="pill">已保存</span>
+            <span class="pill">GLM-5</span>
+          </div>
+          <button class="icon-btn right-open" aria-label="打开作品结构">⌘</button>
+        </header>
+
+        <section class="chat">
+          <div class="intro">
+            <h2>把一个念头，慢慢写成能上台的东西。</h2>
+            <p>这是一个单页面响应式 Demo：桌面端自动展开为三栏，平板端展开为两栏，移动端折叠为单列，并通过抽屉/底部面板复用同一套作品列表和作品脉络。</p>
+          </div>
+
+          <div class="msg">
+            <div class="avatar">我</div>
+            <div class="bubble user">老板说我们要有主人翁意识，但公司裁员的时候又说我是外包。这个素材怎么写？</div>
+          </div>
+
+          <div class="msg">
+            <div class="avatar ai">余</div>
+            <div class="bubble">这是一个「身份错位」素材。笑点不在裁员本身，而在公司会根据需要，随时切换你是谁。</div>
+          </div>
+
+          <div class="msg">
+            <div class="avatar ai">稿</div>
+            <article class="card">
+              <div class="card-head">
+                <div>
+                  <div class="kicker">PREMISE CARD</div>
+                  <h3>责任像主人，权益像租客</h3>
+                </div>
+                <div class="seal">稿</div>
+              </div>
+
+              <div class="card-body">
+                <p class="premise">公司希望你在承担责任时像主人，在分配利益、裁员风险和组织归属时像临时租客。</p>
+
+                <div class="angles">
+                  <div class="angle">
+                    <div class="num">一</div>
+                    <div>
+                      <strong>房东体验卡</strong>
+                      <p>你负责维护房子，但房租照交，房产证没有你。</p>
+                    </div>
+                  </div>
+                  <div class="angle">
+                    <div class="num">二</div>
+                    <div>
+                      <strong>黑话翻译</strong>
+                      <p>“拥抱变化”不是企业文化，是温柔的搬家通知。</p>
+                    </div>
+                  </div>
+                  <div class="angle">
+                    <div class="num">三</div>
+                    <div>
+                      <strong>身份切换</strong>
+                      <p>开会时你是主人翁，裁员时你是外包，发奖金时你是空气。</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="actions">
+                  <button class="action">扩成 1 分钟</button>
+                  <button class="action secondary">更克制</button>
+                  <button class="action secondary">更毒舌</button>
+                  <button class="action secondary">加真实细节</button>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <div class="msg">
+            <div class="avatar ai">余</div>
+            <div class="bubble">建议下一步补一个现实物件：门禁权限、工牌颜色、飞书群、绩效会议。真实细节越具体，段子越稳。</div>
+          </div>
+        </section>
+
+        <footer class="composer">
+          <div class="quick">
+            <button>输入素材</button>
+            <button>提炼前提</button>
+            <button>找角度</button>
+            <button>开放麦口语</button>
+            <button>记录反馈</button>
+          </div>
+          <div class="input">
+            <textarea placeholder="写下一个素材、一个念头，或者一句还没成熟的梗。"></textarea>
+            <button class="send">写作</button>
+          </div>
+        </footer>
+      </main>
+
+      <aside class="panel outline">
+        <div class="right-head">
+          <h2>作品脉络</h2>
+          <p>桌面常驻，移动端变成底部面板。</p>
+        </div>
+
+        <div class="readiness">
+          <div class="readiness-row">
+            <span>开放麦准备度</span>
+            <strong>72%</strong>
+          </div>
+          <div class="bar"><div></div></div>
+        </div>
+
+        <div class="steps">
+          <div class="step">
+            <small>01</small>
+            <h4>原始素材</h4>
+            <p>主人翁意识与外包身份的冲突。</p>
+          </div>
+          <div class="step">
+            <small>02</small>
+            <h4>前提</h4>
+            <p>责任像主人，权益像租客。</p>
+          </div>
+          <div class="step current">
+            <small>03</small>
+            <h4>角度</h4>
+            <p>房东体验卡、黑话翻译、身份切换。</p>
+          </div>
+          <div class="step">
+            <small>04</small>
+            <h4>草稿</h4>
+            <p>下一步扩写成 1 分钟。</p>
+          </div>
+          <div class="step">
+            <small>05</small>
+            <h4>演后记</h4>
+            <p>记录笑点、冷点和观众反应。</p>
+          </div>
+        </div>
+
+        <div class="meta">
+          <div class="metric">前提版本<strong>3</strong></div>
+          <div class="metric">角度卡<strong>9</strong></div>
+          <div class="metric">可演句子<strong>4</strong></div>
+          <div class="metric">改稿历史<strong>12</strong></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="backdrop"></div>
+
+  <aside class="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <span>作品列表</span>
+      <button class="close drawer-close">×</button>
+    </div>
+    <div class="brand">
+      <div class="brand-row">
+        <div class="mark"></div>
+        <span>WASHI STUDIO</span>
+      </div>
+      <h2>余白写作室</h2>
+      <p>移动端复用同一套 WorkSidebar，只是放进抽屉。</p>
+    </div>
+    <nav class="nav">
+      <button class="active"><span>今日写作</span><small>12</small></button>
+      <button><span>作品集</span><small>38</small></button>
+      <button><span>素材匣</span><small>126</small></button>
+      <button><span>演后记</span><small>7</small></button>
+    </nav>
+    <div class="section-title">作品</div>
+    <div class="works">
+      <article class="work active">
+        <h3>职场裁员与主人翁意识</h3>
+        <p>从一句吐槽扩展成 3 分钟开放麦。</p>
+      </article>
+      <article class="work">
+        <h3>AI 算法与大数据杀熟</h3>
+        <p>科技公司专场候选稿。</p>
+      </article>
+    </div>
+  </aside>
+
+  <aside class="sheet" aria-hidden="true">
+    <div class="sheet-head">
+      <span>作品脉络</span>
+      <button class="close sheet-close">×</button>
+    </div>
+    <div class="readiness">
+      <div class="readiness-row">
+        <span>开放麦准备度</span>
+        <strong>72%</strong>
+      </div>
+      <div class="bar"><div></div></div>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <small>01</small>
+        <h4>原始素材</h4>
+        <p>主人翁意识与外包身份的冲突。</p>
+      </div>
+      <div class="step">
+        <small>02</small>
+        <h4>前提</h4>
+        <p>责任像主人，权益像租客。</p>
+      </div>
+      <div class="step current">
+        <small>03</small>
+        <h4>角度</h4>
+        <p>房东体验卡、黑话翻译、身份切换。</p>
+      </div>
+      <div class="step">
+        <small>04</small>
+        <h4>草稿</h4>
+        <p>下一步扩写成 1 分钟。</p>
+      </div>
+    </div>
+  </aside>
+
+  <script>
+    const backdrop = document.querySelector('.backdrop');
+    const drawer = document.querySelector('.drawer');
+    const sheet = document.querySelector('.sheet');
+    const leftOpen = document.querySelector('.left-open');
+    const rightOpen = document.querySelector('.right-open');
+    const drawerClose = document.querySelector('.drawer-close');
+    const sheetClose = document.querySelector('.sheet-close');
+
+    function openDrawer() {
+      drawer.classList.add('active');
+      backdrop.classList.add('active');
+      drawer.setAttribute('aria-hidden', 'false');
+    }
+
+    function openSheet() {
+      sheet.classList.add('active');
+      backdrop.classList.add('active');
+      sheet.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeAll() {
+      drawer.classList.remove('active');
+      sheet.classList.remove('active');
+      backdrop.classList.remove('active');
+      drawer.setAttribute('aria-hidden', 'true');
+      sheet.setAttribute('aria-hidden', 'true');
+    }
+
+    leftOpen.addEventListener('click', openDrawer);
+    rightOpen.addEventListener('click', openSheet);
+    drawerClose.addEventListener('click', closeAll);
+    sheetClose.addEventListener('click', closeAll);
+    backdrop.addEventListener('click', closeAll);
+
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeAll();
+    });
+  </script>
+</body>
+</html>
