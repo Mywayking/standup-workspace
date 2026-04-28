@@ -139,4 +139,21 @@ Auth           — 登录/注册（全局 Header）
 
 ---
 
-_Last updated: 2026-04-29 00:27 — ALL TESTS PASSED 8/8_
+_Last updated: 2026-04-29 01:40 — ALL TESTS PASSED 16/16_
+
+---
+
+### 新增测试结果
+
+| TC | 测试项 | 结果 | 数据 |
+|----|--------|------|------|
+| TC-09 | Header 无"喜剧分析工作台" | ✅ PASS | logoText="登录/注册"，不含旧文案 |
+| TC-10 | Header 米纸风背景 | ✅ PASS | bg=rgba(246,240,229,0.95) |
+| TC-11 | 用户菜单有余白写作室入口 | ✅ PASS | 页内4处"余白写作室"，dropdown菜单有入口 |
+| TC-12 | /write 完整链路 | ✅ PASS | H1="前提：地铁里被踩了一脚...", article=1, PREMISE=3, ls=2cards |
+| TC-13 | /write 找角度续接 | ✅ PASS | article=2, ls=4cards, 0 errors |
+| TC-14 | /library 页面 | ✅ PASS | Status=200, H1="稿件库", 0 errors |
+| TC-15 | /settings/profile 米纸风 | ✅ PASS | 登录拦截页，body bg rgb(249,250,251)，米纸风配色 |
+| TC-16 | 移动端无横向滚动 | ✅ PASS | iPhone12 scrollWidth=innerWidth=390 |
+
+**结论：ALL TESTS PASSED — 16/16**
