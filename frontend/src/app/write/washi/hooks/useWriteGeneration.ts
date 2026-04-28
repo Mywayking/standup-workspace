@@ -41,8 +41,6 @@ export function useWriteGeneration(options: UseWriteGenerationOptions, activeSes
     const body = buildRequestBody(nextIntent, text, extra, resolvedSessionId || undefined);
     const endpoint = nextIntent.endpoint;
 
-    console.log("[DEBUG start] endpoint:", endpoint, "body:", JSON.stringify(body).slice(0, 200));
-
     task.run(endpoint, body as Record<string, unknown>, {
       onToken(token: string) {
         setDraftTokens((prev) => prev + token);
@@ -56,20 +54,11 @@ export function useWriteGeneration(options: UseWriteGenerationOptions, activeSes
         // bypassing React state batching. task.state.tokens may be empty
         // here because React hasn't flushed the batched setState calls yet.
         const accumulatedTokens = tokens ?? task.state.tokens;
-        console.log("[DEBUG onDone] fired", {
-          nextIntentType: nextIntent?.type,
-          accumulatedTokens: accumulatedTokens.slice(0, 100),
-          taskStateTokens: task.state.tokens.slice(0, 100),
-          draftTokensLen: draftTokens.length,
-          raw: raw?.slice?.(0, 100),
-        });
         if (!nextIntent) {
-          console.warn("[DEBUG onDone] nextIntent is null, skipping");
           return;
         }
         void raw;
         const result = parseDoneResult(accumulatedTokens);
-        console.log("[DEBUG onDone] parseDoneResult:", JSON.stringify(result).slice(0, 300));
         // Use the sessionId from the ref (set in start()), not options.sessionId
         // (which may be the initial empty string from component mount).
         const cardSessionId = currentSessionIdRef.current ?? options.sessionId;
@@ -80,19 +69,16 @@ export function useWriteGeneration(options: UseWriteGenerationOptions, activeSes
           tokens: accumulatedTokens,
           meta: convertMeta(task.state.meta),
         });
-        console.log("[DEBUG onDone] card created:", card.type, card.title, "sessionId:", cardSessionId, "content preview:", card.content.slice(0, 100));
         options.onCardCreated(card);
         setDraftTokens("");
       },
       onError(error: string) {
-        console.log("[DEBUG onError] fired", { error, nextIntentType: nextIntent?.type });
         if (!nextIntent) return;
         const card = mapErrorToCard({
           sessionId: options.sessionId,
           error,
           meta: convertMeta(task.state.meta),
         });
-        console.log("[DEBUG onError] error card created:", card.type, card.content);
         options.onCardCreated(card);
         setDraftTokens("");
       },

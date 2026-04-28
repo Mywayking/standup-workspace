@@ -100,7 +100,6 @@ export function useStreamingTask(): StreamingTaskResult {
               tokens: tokensRef.current,
             }));
             if (tokenCount <= 3 || tokenCount % 100 === 0) {
-              console.log("[DEBUG onToken]", tokenCount, "tokens, last:", JSON.stringify(token));
             }
             callbacks?.onToken?.(token);
           },

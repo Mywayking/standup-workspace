@@ -43,13 +43,6 @@ export function WashiWriteClient() {
     {
       sessionId: activeSession?.id ?? "",
       onCardCreated: (card: WorkCard) => {
-        console.log("[DEBUG onCardCreated] called", {
-          cardType: card.type,
-          cardSessionId: card.sessionId,
-          optionsSessionId: activeSession?.id ?? "",
-          sessionsCount: sessions.length,
-          activeSessionId,
-        });
         addCard(card);
       },
     },
