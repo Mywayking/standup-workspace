@@ -253,7 +253,9 @@ export function WashiWriteClient() {
       {/* Composer */}
       <Composer
         disabled={generation.state.phase === "thinking"}
+        generating={generation.state.phase === "thinking"}
         onSubmit={handleSubmit}
+        onCancel={generation.abort}
       />
     </div>
   );
