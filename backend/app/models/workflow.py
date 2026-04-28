@@ -15,6 +15,11 @@ class WorkflowSession(Base):
     user_id = Column(String(128), nullable=False, index=True)
     title = Column(String(500), nullable=False, default="新会话")
     source_input = Column(Text, default="")
+    input_type = Column(String(50), nullable=True)
+    current_step = Column(String(50), nullable=True)  # material/premise/angles/draft...
+    script_status = Column(String(20), nullable=False, default="idea")  # idea/premise/draft...
+    save_status = Column(String(20), nullable=False, default="saved_local")  # saved_local/saved_cloud
+    sync_status = Column(String(20), nullable=False, default="local_only")  # local_only/synced
     status = Column(String(20), nullable=False, default="active")  # active / archived
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -33,6 +38,7 @@ class WorkflowCard(Base):
 
     id = Column(String(64), primary_key=True, default=lambda: f"card-{uuid.uuid4().hex}")
     session_id = Column(String(64), ForeignKey("workflow_sessions.id", ondelete="CASCADE"), nullable=False)
+    parent_id = Column(String(64), nullable=True)  # parent card id for tree structure
     type = Column(String(50), nullable=False)  # source/premise/angles/rewrite/stage_version
     title = Column(String(500), nullable=False)
     content = Column(Text, default="")
@@ -41,8 +47,13 @@ class WorkflowCard(Base):
     source_step = Column(String(50), nullable=True)
     source_card_id = Column(String(64), nullable=True)
     source_chain = Column(JSON, default=list)
+    is_selected = Column(Integer, default=0)  # 0/1 - whether this card is currently selected
+    is_mainline = Column(Integer, default=1)  # 0/1 - whether this card is on the main writing line
+    version = Column(Integer, default=1)  # version number for tracking edits
     model = Column(String(100), nullable=True)
+    provider = Column(String(100), nullable=True)
     latency_ms = Column(Integer, nullable=True)
+    token_usage = Column(Text, nullable=True)  # JSON string for token tracking
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

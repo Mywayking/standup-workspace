@@ -1,12 +1,15 @@
 """
 Phase 6-7 缺失端点：draft/stream 和 premise-check/stream
+以及统一写作任务端点 POST /api/write/task/stream
 """
 import json
 import logging
+import time
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from sqlalchemy import text
 
 from ..llm import get_stream_gateway, LLMRequest, LLMMessage
 from ..utils.logging import new_request_id, set_request_context
@@ -245,6 +248,149 @@ async def performance_review_stream(req: dict, request: Request):
 
     return StreamingResponse(
         _stream_llm("write_performance_review", PERFORMANCE_REVIEW_SYSTEM, user_prompt, request_id, user_id),
+        media_type="text/event-stream",
+        headers=_COMMON_STREAM_HEADERS,
+    )
+
+
+# ─── 统一写作任务端点 ─────────────────────────────────────────────────────────────
+
+@router.post("/task/stream")
+async def write_task_stream(req: dict, request: Request):
+    """
+    统一写作任务流式 API。
+
+    请求体：
+    {
+        "taskType": "premise|angles|draft|rewrite|performance_review",
+        "sessionId": "...",
+        "input": "用户输入文本",
+        "context": {},
+        "userStyle": {}
+    }
+
+    SSE 输出格式：
+      event: meta  → 初始元信息
+      event: token → 流式 token
+      event: done  → 成功完成
+      event: error → 错误（可重试）
+    """
+    from ..database import SessionLocal
+    from ..services.model_router import stream_model
+
+    from ..services.prompt_builder import build_prompt, build_user_message
+
+    user = _current_user(request, SessionLocal())
+    user_id = str(user.ulid) if user else None
+
+    task_type = (req.get("taskType") or "").strip()
+    session_id = (req.get("sessionId") or "").strip()
+    user_input = (req.get("input") or "").strip()
+    context = req.get("context") or {}
+    user_style = req.get("userStyle") or {}
+
+    if task_type not in ("premise", "angles", "draft", "rewrite", "performance_review"):
+        raise HTTPException(400, f"不支持的 taskType：{task_type}")
+
+    if not user_input or len(user_input) < 2:
+        raise HTTPException(400, "input 太短（至少2字）")
+
+    request_id = new_request_id(f"wt_{task_type[:2]}")
+    set_request_context(request_id, f"write/task/{task_type}")
+
+    async def _sse_response():
+        import uuid
+        log_id = str(uuid.uuid4())
+        start_time = time.time()
+        provider_used = "unknown"
+        model_used = "unknown"
+        output_len = 0
+        status = "success"
+        error_code = None
+        error_message = None
+        retry_count = 0
+
+        def _log(status_override=None, error_code_override=None, error_message_override=None):
+            nonlocal provider_used, model_used, output_len, status, error_code, error_message
+            elapsed = int((time.time() - start_time) * 1000)
+            try:
+                db = SessionLocal()
+                try:
+                    db.execute(
+                        text("""
+                        INSERT INTO ai_task_logs
+                        (id, session_id, user_id, task_type, provider, model,
+                         status, latency_ms, retry_count, input_length, output_length,
+                         error_code, error_message, request_id)
+                        VALUES
+                        (:id, :session_id, :user_id, :task_type, :provider, :model,
+                         :status, :latency_ms, :retry_count, :input_length, :output_length,
+                         :error_code, :error_message, :request_id)
+                        """),
+                        {
+                            "id": log_id,
+                            "session_id": session_id or None,
+                            "user_id": user_id,
+                            "task_type": task_type,
+                            "provider": provider_used,
+                            "model": model_used,
+                            "status": status_override or status,
+                            "latency_ms": elapsed,
+                            "retry_count": retry_count,
+                            "input_length": len(user_input),
+                            "output_length": output_len,
+                            "error_code": error_code_override or error_code,
+                            "error_message": error_message_override or error_message,
+                            "request_id": request_id,
+                        },
+                    )
+                    db.commit()
+                finally:
+                    db.close()
+            except Exception:
+                logger.warning("[ai_task_log] insert failed", exc_info=True)
+
+
+        try:
+            async for chunk in stream_model(
+                task_type=task_type,
+                user_input=user_input,
+                context=context,
+                user_style=user_style,
+                request_id=request_id,
+                user_id=user_id,
+            ):
+                if chunk.type == "token":
+                    output_len += len(chunk.text)
+                    yield f"event: token\ndata: {json.dumps({'content': chunk.text}, ensure_ascii=False)}\n\n"
+                elif chunk.type == "done":
+                    meta = chunk.meta or {}
+                    provider_used = meta.get("provider", provider_used)
+                    model_used = meta.get("model", model_used)
+                    error_code = None
+                    status = "success"
+                    yield f"event: done\ndata: {json.dumps({'result': chunk.text, '_meta': meta}, ensure_ascii=False)}\n\n"
+                    _log()
+                elif chunk.type == "error":
+                    error_code = chunk.meta.get("error_code", "UNKNOWN")
+                    error_message = chunk.text
+                    status = "failed"
+                    retry_count += 1
+                    yield f"event: error\ndata: {json.dumps({'error': chunk.text, '_meta': chunk.meta}, ensure_ascii=False)}\n\n"
+                elif chunk.type == "meta":
+                    provider_used = chunk.meta.get("provider", provider_used)
+                    model_used = chunk.meta.get("model", model_used)
+                    yield f"event: meta\ndata: {json.dumps(chunk.meta, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            status = "failed"
+            error_code = "EXCEPTION"
+            error_message = str(e)
+            _log()
+            yield f"event: error\ndata: {json.dumps({'error': str(e), '_meta': {'error_code': 'EXCEPTION'}}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        _sse_response(),
         media_type="text/event-stream",
         headers=_COMMON_STREAM_HEADERS,
     )
