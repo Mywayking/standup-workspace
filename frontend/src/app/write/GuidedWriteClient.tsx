@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type {
   WorkflowSession,
   WorkflowCard,
@@ -22,11 +22,14 @@ import {
   INPUT_TYPE_TO_INITIAL_STEP,
   mapDetectResultToInputType,
 } from "./lib/stepMap";
+import { buildCardTree } from "./lib/cardTree";
+import { useUserStyle } from "./lib/useUserStyle";
 import StepHeader from "./components/StepHeader";
 import StickyPrimaryAction from "./components/StickyPrimaryAction";
 import WorkflowCardComponent, { WorkflowCardSkeleton } from "./components/WorkflowCard";
 import SaveStatusBadge from "./components/SaveStatusBadge";
 import JokeLibraryDrawer from "./components/JokeLibraryDrawer";
+import VersionCompareDrawer from "./components/VersionCompareDrawer";
 import MobileBottomNav, { type Tab } from "./components/MobileBottomNav";
 import DesktopLeftPanel from "./components/DesktopLeftPanel";
 import DesktopRightPanel from "./components/DesktopRightPanel";
@@ -132,7 +135,12 @@ async function streamText(
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function buildStepBody(step: WorkflowStep, sourceInput: string, selectedCardContent?: string): Record<string, unknown> {
+export function buildStepBody(
+  step: WorkflowStep,
+  sourceInput: string,
+  selectedCardContent?: string,
+  extraFields?: Record<string, string>
+): Record<string, unknown> {
   switch (step) {
     case "detect":
       return { text: sourceInput };
@@ -151,7 +159,13 @@ export function buildStepBody(step: WorkflowStep, sourceInput: string, selectedC
       // rewrite expects 'text' field with the draft/script content
       return { text: selectedCardContent || sourceInput };
     case "performance_review":
-      return { text: sourceInput };
+      // performance_review expects laugh_parts, flop_parts, forgot_parts, original_script
+      return {
+        laugh_parts: extraFields?.laughParts ?? "",
+        flop_parts: extraFields?.flopParts ?? "",
+        forgot_parts: extraFields?.forgotParts ?? "",
+        original_script: selectedCardContent || sourceInput,
+      };
     default:
       return { text: sourceInput };
   }
@@ -167,6 +181,9 @@ export default function GuidedWriteClient({
   const [sessions, setSessions] = useState<WorkflowSession[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>("create");
 
+  // Version compare drawer state
+  const [compareCard, setCompareCard] = useState<WorkflowCard | null>(null);
+
   // AI output state
   const [generating, setGenerating] = useState(false);
   const [generatingStep, setGeneratingStep] = useState<WorkflowStep | null>(null);
@@ -180,6 +197,14 @@ export default function GuidedWriteClient({
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const drawerOpen = useState(false);
+
+  // User style profile (Phase 9)
+  const { profile: userStyle } = useUserStyle();
+
+  // Performance review input fields (Phase 10)
+  const [prLaughParts, setPrLaughParts] = useState("");
+  const [prFlopParts, setPrFlopParts] = useState("");
+  const [prForgotParts, setPrForgotParts] = useState("");
 
   // Load sessions on mount
   useEffect(() => {
@@ -227,16 +252,72 @@ export default function GuidedWriteClient({
     });
   }, []);
 
+  // ── Determine parent card ID based on current step ──────────────────────
+
+  const getParentCardId = useCallback((s: WorkflowSession, step: WorkflowStep): string | undefined => {
+    // Build a temporary cardMap to find correct parent
+    const cardMap = buildCardTree([s]);
+    const cards = s.cards;
+
+    switch (step) {
+      case "material":
+      case "premise":
+        // First step — no parent (root card)
+        return undefined;
+      case "joke_to_premise":
+        return undefined;
+      case "angles": {
+        // Parent = last premise card (if exists)
+        const premises = cards.filter((c) => c.type === "premise" || c.type === "material");
+        return premises[premises.length - 1]?.id;
+      }
+      case "draft": {
+        // Parent = last angle card
+        const angles = cards.filter((c) => c.type === "angles");
+        return angles[angles.length - 1]?.id;
+      }
+      case "rewrite": {
+        // Parent = last draft card
+        const drafts = cards.filter((c) => c.type === "draft");
+        return drafts[drafts.length - 1]?.id;
+      }
+      case "performance_review": {
+        // Parent = last relevant card (could be draft or rewrite)
+        const relevant = cards.filter((c) => ["draft", "rewrite"].includes(c.type));
+        return relevant[relevant.length - 1]?.id;
+      }
+      default:
+        return undefined;
+    }
+  }, []);
+
   // ── Add card to session ───────────────────────────────────────────────────
 
-  const addCard = useCallback((step: WorkflowStep, content: string, title?: string, meta?: { model?: string; provider?: string; latencyMs?: number }) => {
+  const addCard = useCallback((
+    step: WorkflowStep,
+    content: string,
+    title?: string,
+    meta?: { model?: string; provider?: string; latencyMs?: number },
+    parentIdOverride?: string
+  ) => {
     setSession((prev) => {
       if (!prev) return prev;
       const now = new Date().toISOString();
+
+      // Determine parent card ID
+      const parentId = parentIdOverride ?? getParentCardId(prev, step);
+
+      // Calculate version number (how many siblings does this parent have?)
+      let version = 1;
+      if (parentId) {
+        const siblings = prev.cards.filter((c) => c.parentId === parentId);
+        version = siblings.length + 1;
+      }
+
       const card: WorkflowCard = {
         id: genId("card"),
         sessionId: prev.id,
-        parentId: undefined,
+        parentId,
         childrenIds: [],
         type: step,
         title: title ?? WORKFLOW_STEP_LABELS[step],
@@ -244,13 +325,14 @@ export default function GuidedWriteClient({
         sourcePath: prev.cards.map((c) => c.type),
         isSelected: false,
         isMainline: true,
-        version: 1,
+        version,
         model: meta?.model,
         provider: meta?.provider,
         latencyMs: meta?.latencyMs,
         createdAt: now,
         updatedAt: now,
       };
+
       const updated = {
         ...prev,
         cards: [...prev.cards, card],
@@ -261,12 +343,18 @@ export default function GuidedWriteClient({
       saveSession(updated);
       return updated;
     });
-  }, []);
+  }, [getParentCardId]);
 
   // ── Main flow: run step ───────────────────────────────────────────────────
 
   const runStep = useCallback(
-    async (s: WorkflowSession, step: WorkflowStep) => {
+    async (
+      s: WorkflowSession,
+      step: WorkflowStep,
+      prLaugh?: string,
+      prFlop?: string,
+      prForgot?: string
+    ) => {
       const endpoint = STEP_API_MAP[step];
       if (!endpoint) return;
 
@@ -289,8 +377,20 @@ export default function GuidedWriteClient({
         const selected = s.cards[s.cards.length - 1];
         selectedCardContent = selected?.content;
       }
-      const body = buildStepBody(step, s.sourceInput, selectedCardContent);
-      await streamText(endpoint, body, {
+      // Build extra fields for performance_review (Phase 10)
+      const extraFields: Record<string, string> | undefined = step === "performance_review"
+        ? {
+            laughParts: prLaugh ?? prLaughParts,
+            flopParts: prFlop ?? prFlopParts,
+            forgotParts: prForgot ?? prForgotParts,
+          }
+        : undefined;
+      const body = buildStepBody(step, s.sourceInput, selectedCardContent, extraFields);
+      // Pass userStyle in request if set (Phase 9)
+      if (userStyle && Object.keys(userStyle).length > 1) {
+        (body as Record<string, unknown>).userStyle = userStyle;
+      }
+      await streamText(endpoint, body as Record<string, unknown>, {
         signal: controller.signal,
         onToken: (t) => {
           fullContent += t;
@@ -400,10 +500,15 @@ export default function GuidedWriteClient({
       const next = getNextStep(prev.currentStep, prev.inputType);
       const updated = { ...prev, currentStep: next, updatedAt: new Date().toISOString() };
       saveSession(updated);
-      runStep(updated, next);
+      // Pass performance_review fields explicitly to avoid stale closure
+      if (next === "performance_review") {
+        runStep(updated, next, prLaughParts, prFlopParts, prForgotParts);
+      } else {
+        runStep(updated, next);
+      }
       return updated;
     });
-  }, [runStep]);
+  }, [runStep, prLaughParts, prFlopParts, prForgotParts]);
 
   // ── Reset session ─────────────────────────────────────────────────────────
 
@@ -603,6 +708,54 @@ export default function GuidedWriteClient({
             )}
           </div>
 
+          {/* Performance review input form (Phase 10) */}
+          {session.currentStep === "performance_review" && !generating && (
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
+              <p className="text-sm text-gray-600 leading-relaxed">
+                填写你的演出反馈，AI会帮你分析并给出下一版修改建议。
+              </p>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  🎉 观众笑了的部分（哪里笑了？）
+                </label>
+                <textarea
+                  value={prLaughParts}
+                  onChange={(e) => setPrLaughParts(e.target.value)}
+                  placeholder="比如：开场自我介绍那里笑得很炸，第三分钟讲加班那个笑点很爆…"
+                  className="w-full min-h-16 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-700 placeholder-gray-300 resize-none outline-none focus:border-blue-400 transition-colors"
+                  style={{ fontFamily: "inherit" }}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  😅 冷场的部分（哪里没响？）
+                </label>
+                <textarea
+                  value={prFlopParts}
+                  onChange={(e) => setPrFlopParts(e.target.value)}
+                  placeholder="比如：中间讲同事那个铺得太长，后面收尾有点突然…"
+                  className="w-full min-h-16 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-700 placeholder-gray-300 resize-none outline-none focus:border-blue-400 transition-colors"
+                  style={{ fontFamily: "inherit" }}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  🤔 忘记/卡壳的部分
+                </label>
+                <textarea
+                  value={prForgotParts}
+                  onChange={(e) => setPrForgotParts(e.target.value)}
+                  placeholder="比如：第二个笑点忘记说了，收尾那句话卡了一下…"
+                  className="w-full min-h-16 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-700 placeholder-gray-300 resize-none outline-none focus:border-blue-400 transition-colors"
+                  style={{ fontFamily: "inherit" }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* AI Output area */}
           {generating || tokens || error ? (
             <div className="space-y-3">
@@ -638,13 +791,20 @@ export default function GuidedWriteClient({
             </div>
           ) : null}
 
-          {/* Cards from session */}
+          {/* Cards from session (with tree structure) */}
           {session.cards.map((card) => (
             <WorkflowCardComponent
               key={card.id}
               card={card}
               onSelect={(c) => {
-                // Future: version tree navigation
+                // Open version compare drawer if there are siblings
+                const cardMap = buildCardTree([session]);
+                const siblings = Array.from(cardMap.values()).filter(
+                  (x) => x.parentId === c.parentId && x.id !== c.id
+                );
+                if (siblings.length > 0 || session.cards.filter((x) => x.parentId === c.parentId).length > 0) {
+                  setCompareCard(c);
+                }
               }}
             />
           ))}
@@ -707,6 +867,20 @@ export default function GuidedWriteClient({
         onRestore={handleRestore}
         onDelete={handleDelete}
       />
+
+      {/* Version compare drawer (Phase 8) */}
+      {compareCard && session && (
+        <VersionCompareDrawer
+          card={compareCard}
+          cardMap={buildCardTree([session])}
+          session={session}
+          onClose={() => setCompareCard(null)}
+          onSetMainline={(updated) => {
+            setSession(updated);
+            saveSession(updated);
+          }}
+        />
+      )}
     </div>
   );
 }

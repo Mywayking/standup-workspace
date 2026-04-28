@@ -239,6 +239,19 @@ export interface JokeLibraryItem {
   updatedAt: string;
 }
 
+// ─── 专场 (Special Set) ───────────────────────────────────────
+
+export interface SpecialSet {
+  id: string;
+  userId?: string;
+  title: string;
+  description?: string;
+  scriptIds: string[];
+  totalDurationMin: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── 用户风格 Profile ────────────────────────────────────────
 
 export interface UserStyleProfile {
@@ -295,6 +308,14 @@ export const TASK_ENTRY_CARDS: TaskEntryCard[] = [
     desc: "完整段子，想改稿或上台版",
     step: "rewrite",
     inputType: "draft",
+  },
+  {
+    key: "复盘",
+    icon: "🎤",
+    title: "我刚演完一段",
+    desc: "记录演出反馈，生成下一版",
+    step: "performance_review",
+    inputType: "performance",
   },
 ];
 

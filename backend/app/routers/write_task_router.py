@@ -160,3 +160,91 @@ async def premise_check_stream(req: dict, request: Request):
         media_type="text/event-stream",
         headers=_COMMON_STREAM_HEADERS,
     )
+
+
+PERFORMANCE_REVIEW_SYSTEM = """
+你是一个资深脱口秀演员和编剧，专注于演后复盘分析。
+
+## 你的任务
+用户刚完成一场演出，提供了演出反馈（哪里笑了、哪里冷了、哪里忘了），你的任务是为他提供专业的复盘分析，告诉他下一版应该怎么改。
+
+## 输入信息
+用户会告诉你：
+- 哪些部分获得了笑声/好的反应
+- 哪些部分反应不好（冷场）
+- 哪些部分忘记了/卡壳了
+- 原始段子文本（如果有）
+
+## 评估与改进维度
+1. **笑点保留** — 哪些笑点有效，下一版要保留并加强
+2. **铺垫问题** — 冷场的原因是什么（太快/太绕/缺乏情景）
+3. **节奏问题** — 哪里太拖沓，哪里太赶
+4. **记忆技巧** — 忘掉的部分怎么改才容易记住
+5. **个人风格** — 哪些是你的独特优势，下一版要放大
+6. **具体修改建议** — 逐段给出下一版的修改方向
+
+## 输出格式（严格JSON）
+{
+  "what_worked": {
+    "laugh_points": ["有效的笑点1", "有效的笑点2"],
+    "why_it_worked": "这些笑点有效的原因分析",
+    "keep_and_strengthen": ["要保留并加强的部分"]
+  },
+  "what_flopped": {
+    "cold_spots": ["冷场的部分"],
+    "root_cause": "冷场根本原因分析",
+    "delete_or_revise": ["建议删除或重写的内容"]
+  },
+  "forgot_parts": {
+    "locations": ["忘记/卡壳的位置"],
+    "memory_tips": "帮助记忆的技巧建议"
+  },
+  "next_version_suggestions": [
+    {
+      "location": "位置/段落",
+      "current_issue": "当前问题",
+      "suggested_fix": "下一版建议修改方式",
+      "reason": "修改原因"
+    }
+  ],
+  "personal_style_notes": "关于你的个人风格的观察和建议",
+  "overall_verdict": "一句话总结：这次演出最值得记住的是什么"
+}
+"""
+
+
+@router.post("/performance-review/stream")
+async def performance_review_stream(req: dict, request: Request):
+    """演后复盘（流式）— 输入演出反馈，返回复盘分析"""
+    from ..database import SessionLocal
+    user = _current_user(request, SessionLocal())
+    user_id = str(user.ulid) if user else None
+
+    laugh_parts = req.get("laugh_parts", "").strip()
+    flop_parts = req.get("flop_parts", "").strip()
+    forgot_parts = req.get("forgot_parts", "").strip()
+    original_script = req.get("original_script", "").strip()
+
+    if not laugh_parts and not flop_parts:
+        raise HTTPException(400, "请提供至少一段笑声反馈或冷场反馈")
+
+    request_id = new_request_id("wpr")
+    set_request_context(request_id, "write/performance-review/stream")
+
+    prompt_parts = ["## 演出反馈\n"]
+    if laugh_parts:
+        prompt_parts.append(f"### 笑声部分（观众笑了）：\n{laugh_parts}\n")
+    if flop_parts:
+        prompt_parts.append(f"### 冷场部分（反应不好）：\n{flop_parts}\n")
+    if forgot_parts:
+        prompt_parts.append(f"### 忘记/卡壳的部分：\n{forgot_parts}\n")
+    if original_script:
+        prompt_parts.append(f"### 原始段子文本：\n{original_script}\n")
+
+    user_prompt = "".join(prompt_parts) + "\n请严格按JSON格式输出，不要输出任何Schema以外的文字。"
+
+    return StreamingResponse(
+        _stream_llm("write_performance_review", PERFORMANCE_REVIEW_SYSTEM, user_prompt, request_id, user_id),
+        media_type="text/event-stream",
+        headers=_COMMON_STREAM_HEADERS,
+    )
