@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import WritePageContent from "./WritePageContent";
 
+// Required: WritePageContent uses client-side localStorage via dynamic({ ssr: false })
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "喜剧写稿台 | 脱口秀创作工具",
   description:
@@ -12,7 +15,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "zh_CN",
-    url: "https://ai.alwayshaha.art/write",
+    url: "https://standup.alwayshaha.art/write",
     siteName: "喜剧写稿台",
     title: "喜剧写稿台 | 脱口秀创作工具",
     description:
@@ -36,7 +39,7 @@ export const metadata: Metadata = {
     },
   },
   alternates: {
-    canonical: "https://ai.alwayshaha.art/write",
+    canonical: "https://standup.alwayshaha.art/write",
   },
 };
 
