@@ -38,6 +38,43 @@ export function detectWriteIntent(text: string): WriteIntent {
     };
   }
 
+  // 快捷按钮前缀检测（优先于通用规则）
+  if (
+    input.includes("前提：") ||
+    input.startsWith("前提")
+  ) {
+    return {
+      type: "premise",
+      endpoint: WRITE_ENDPOINT_MAP.premise,
+      confidence: 0.95,
+      reason: "explicit premise prefix",
+    };
+  }
+
+  if (
+    input.includes("改稿：") ||
+    input.startsWith("改稿")
+  ) {
+    return {
+      type: "rewrite",
+      endpoint: WRITE_ENDPOINT_MAP.rewrite,
+      confidence: 0.95,
+      reason: "explicit rewrite prefix",
+    };
+  }
+
+  if (
+    input.includes("找角度：") ||
+    input.startsWith("找角度")
+  ) {
+    return {
+      type: "angles",
+      endpoint: WRITE_ENDPOINT_MAP.angles,
+      confidence: 0.95,
+      reason: "explicit angles prefix",
+    };
+  }
+
   // 改稿意图（长文本或包含改稿关键词）
   if (
     input.includes("改稿") ||

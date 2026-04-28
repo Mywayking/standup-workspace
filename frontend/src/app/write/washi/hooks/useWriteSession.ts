@@ -84,12 +84,19 @@ export function useWriteSession() {
 
   const addCard = useCallback(
     (card: WorkCard) => {
+      // Resolve the target session: use card.sessionId if it's a valid non-empty
+      // string, otherwise fall back to activeSessionId.
+      // This handles the race where the premise card is created before
+      // the activeSessionId has been set by the material card creation.
+      const targetSessionId = card.sessionId || activeSessionId;
       setSessions((prev) => {
+        // If no valid targetSessionId, nothing to do
+        if (!targetSessionId) return prev;
         const next = prev.map((s) => {
-          if (s.id !== card.sessionId) return s;
+          if (s.id !== targetSessionId) return s;
           const updated: WorkSession = {
             ...s,
-            cards: [...s.cards, card],
+            cards: [...s.cards, { ...card, sessionId: targetSessionId }],
             updatedAt: Date.now(),
           };
           saveSession(updated);
@@ -99,7 +106,7 @@ export function useWriteSession() {
         return next;
       });
     },
-    []
+    [activeSessionId]
   );
 
   // ── 更新卡片 ────────────────────────────────────────────

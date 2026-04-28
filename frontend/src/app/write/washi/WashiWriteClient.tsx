@@ -13,9 +13,9 @@ import { useWriteGeneration } from "./hooks/useWriteGeneration";
 import { detectWriteIntent } from "./hooks/useWriteIntent";
 import { ResponsiveWashiShell } from "./components/ResponsiveWashiShell";
 import { WorkSidebar } from "./components/WorkSidebar";
-import { ChatCanvas } from "./components/ChatCanvas";
+import { WashiMainFlow } from "./WashiMainFlow";
 import { Composer } from "./components/Composer";
-import { WorkOutline } from "./components/WorkOutline";
+import { WashiRightPanel } from "./WashiRightPanel";
 import { MobileDrawer } from "./components/MobileDrawer";
 import { MobileSheet } from "./components/MobileSheet";
 import { EmptyState } from "./components/EmptyState";
@@ -39,12 +39,22 @@ export function WashiWriteClient() {
 
   // ── Generation ────────────────────────────────────────────
 
-  const generation = useWriteGeneration({
-    sessionId: activeSession?.id ?? "",
-    onCardCreated: (card: WorkCard) => {
-      addCard(card);
+  const generation = useWriteGeneration(
+    {
+      sessionId: activeSession?.id ?? "",
+      onCardCreated: (card: WorkCard) => {
+        console.log("[DEBUG onCardCreated] called", {
+          cardType: card.type,
+          cardSessionId: card.sessionId,
+          optionsSessionId: activeSession?.id ?? "",
+          sessionsCount: sessions.length,
+          activeSessionId,
+        });
+        addCard(card);
+      },
     },
-  });
+    activeSessionId
+  );
 
   // ── Submit ───────────────────────────────────────────────
 
@@ -71,7 +81,7 @@ export function WashiWriteClient() {
       }
 
       // Start generation
-      generation.start(text);
+      generation.start(text, undefined, session.id);
     },
     [activeSession, createSession, addCard, generation]
   );
@@ -105,7 +115,7 @@ export function WashiWriteClient() {
           createdAt: Date.now(),
         };
         addCard(userCard);
-        generation.start(text);
+        generation.start(text, undefined, session.id);
         return;
       }
 
@@ -123,12 +133,12 @@ export function WashiWriteClient() {
           createdAt: Date.now(),
         };
         addCard(userCard);
-        generation.start(text);
+        generation.start(text, undefined, session.id);
         return;
       }
 
       // Default: restart with the same content
-      generation.start(text);
+      generation.start(text, undefined, activeSession?.id ?? activeSessionId ?? undefined);
     },
     [activeSession, createSession, addCard, generation]
   );
@@ -235,12 +245,14 @@ export function WashiWriteClient() {
         {activeCards.length === 0 && generation.state.phase !== "thinking" && !generation.draftTokens ? (
           <EmptyState onTryExample={handleTryExample} />
         ) : (
-          <ChatCanvas
+          <WashiMainFlow
             cards={activeCards}
             isThinking={generation.state.phase === "thinking"}
-            draftTokens={generation.draftTokens}
-            onAction={handleAction}
+            streamingText={generation.draftTokens}
+            error={null}
+            currentStep={activeCards[activeCards.length - 1]?.type ?? "material"}
             onRetry={handleRetry}
+            onAction={handleAction}
           />
         )}
       </div>
@@ -267,10 +279,11 @@ export function WashiWriteClient() {
   // ── Outline content ──────────────────────────────────────
 
   const outlineContent = (
-    <WorkOutline
+    <WashiRightPanel
       session={activeSession}
-      cards={activeCards}
-      activeCardId={activeCards[activeCards.length - 1]?.id}
+      currentStep={activeCards[activeCards.length - 1]?.type ?? "material"}
+      model={generation.state.meta?.selected_model}
+      latencyMs={generation.state.meta?.total_latency_ms ?? null}
     />
   );
 
