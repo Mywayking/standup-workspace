@@ -89,17 +89,18 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
   };
 
   const inputClass =
-    "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+    "w-full px-3 py-2 border border-black/15 bg-white/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#A94737]/30 focus:border-[#A94737] text-[#25231F]";
 
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(37,35,31,0.6)' }}
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+      <div className="bg-[#FBF8F0] rounded-3xl border border-black/10 shadow-xl w-full max-w-sm mx-4 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
@@ -107,7 +108,7 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
               {tab === "register" ? "注册" : "登录"}
             </h2>
             {tab === "register" && (
-              <p className="text-sm text-indigo-600 mt-0.5 font-medium">保存这条段子灵感</p>
+              <p className="text-sm text-[#A94737] mt-0.5 font-medium">保存这条段子灵感</p>
             )}
           </div>
           <button
@@ -122,7 +123,7 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
 
         {/* Feature list (register only) */}
         {tab === "register" && (
-          <div className="px-6 py-3 bg-indigo-50 border-b border-indigo-100">
+          <div className="px-6 py-3 bg-[#A94737]/8 border-b border-[#A94737]/15">
             <ul className="space-y-1">
               {[
                 "保存创作历史",
@@ -130,8 +131,8 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
                 "建立你的素材库",
                 "让 AI 记住你的喜剧风格",
               ].map((item) => (
-                <li key={item} className="flex items-center gap-2 text-sm text-indigo-700">
-                  <svg className="w-3.5 h-3.5 text-indigo-400 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <li key={item} className="flex items-center gap-2 text-sm text-[#25231F]">
+                  <svg className="w-3.5 h-3.5 text-[#A94737] shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>
                   {item}
@@ -142,12 +143,12 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
         )}
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200">
+        <div className="flex border-b border-black/10">
           <button
             className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
               tab === "register"
-                ? "text-indigo-600 border-b-2 border-indigo-600"
-                : "text-gray-500 hover:text-gray-700"
+                ? "text-[#A94737] border-b-2 border-[#A94737]"
+                : "text-[#8A8174] border-b-2 border-transparent hover:text-[#25231F]"
             }`}
             onClick={() => { setTab("register"); setError(""); }}
           >
@@ -156,8 +157,8 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
           <button
             className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
               tab === "login"
-                ? "text-indigo-600 border-b-2 border-indigo-600"
-                : "text-gray-500 hover:text-gray-700"
+                ? "text-[#A94737] border-b-2 border-[#A94737]"
+                : "text-[#8A8174] border-b-2 border-transparent hover:text-[#25231F]"
             }`}
             onClick={() => { setTab("login"); setError(""); }}
           >
@@ -169,7 +170,7 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
           {/* 标识符 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-[#25231F] mb-1">
               {tab === "register" ? "邮箱 / 手机号" : "邮箱 / 手机号"}
             </label>
             <input
@@ -184,7 +185,7 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
 
           {/* 密码 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
+            <label className="block text-sm font-medium text-[#25231F] mb-1">密码</label>
             <input
               type="password"
               value={password}
@@ -197,7 +198,7 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
           {/* 确认密码（仅注册） */}
           {tab === "register" && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">确认密码</label>
+              <label className="block text-sm font-medium text-[#25231F] mb-1">确认密码</label>
               <input
                 type="password"
                 value={confirmPassword}
@@ -210,7 +211,7 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
 
           {/* 错误提示 */}
           {error && (
-            <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+            <div className="text-sm text-[#A94737] bg-[#A94737]/8 rounded-lg px-3 py-2">
               {error}
             </div>
           )}
@@ -219,7 +220,7 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-sm font-medium rounded-lg transition-colors"
+            className="w-full py-2.5 bg-[#A94737] hover:bg-[#8f3a2c] disabled:bg-[#A94737]/40 text-white text-sm font-medium rounded-lg transition-colors"
           >
             {loading ? "处理中..." : tab === "register" ? "登录并保存" : "登录"}
           </button>
@@ -240,7 +241,7 @@ export default function LoginModal({ open, onClose, defaultTab = "register" }: L
             <div className="text-center">
               <a
                 href="/forgot-password"
-                className="text-sm text-indigo-600 hover:text-indigo-500"
+                className="text-sm text-[#A94737] hover:text-[#8f3a2c]"
               >
                 忘记密码？
               </a>

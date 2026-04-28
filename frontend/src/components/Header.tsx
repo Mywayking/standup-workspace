@@ -22,7 +22,7 @@ export default function Header() {
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2">
-            <svg className="w-6 h-6 text-indigo-600" viewBox="0 0 24 24" fill="currentColor">
+            <svg className="w-6 h-6 text-[#A94737]" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" />
             </svg>
             <span className="font-semibold text-gray-900">喜剧分析工作台</span>
@@ -44,7 +44,7 @@ export default function Header() {
                       className="w-7 h-7 rounded-full"
                     />
                   ) : (
-                    <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-sm font-medium">
+                    <div className="w-7 h-7 rounded-full bg-[#A94737]/15 flex items-center justify-center text-[#A94737] text-sm font-medium">
                       {user?.profile?.displayName?.[0] || user?.nickname?.[0] || "U"}
                     </div>
                   )}
@@ -108,7 +108,7 @@ export default function Header() {
                 </button>
                 <button
                   onClick={() => openLogin("register")}
-                  className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg transition-colors"
+                  className="text-sm bg-[#A94737] hover:bg-[#8f3a2c] text-white px-3 py-1.5 rounded-lg transition-colors"
                 >
                   注册
                 </button>
