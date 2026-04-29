@@ -25,6 +25,7 @@
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* === Guided Mode 移动端优先 === */
@@ -83,10 +84,27 @@
 
 /* === 移动端修复 === */
 
-/* 1. 100vh 修复 iOS Safari */
-.min-h-screen {
+/* 1. 100vh/100dvh/100svh 修复 iOS Safari */
+.min-h-screen,
+.min-h-\[100svh\] {
   min-height: 100vh;
   min-height: 100dvh;
+  min-height: 100svh; /* iOS Safari 动态头部 */
+}
+
+.h-\[100dvh\] {
+  height: 100vh;
+  height: 100dvh;
+  height: 100svh;
+}
+
+/* @supports 兜底 */
+@supports (height: 100dvh) {
+  .min-h-screen,
+  .min-h-\[100svh\] {
+    min-height: 100dvh;
+    min-height: 100svh;
+  }
 }
 
 /* 2. textarea 键盘遮挡 */

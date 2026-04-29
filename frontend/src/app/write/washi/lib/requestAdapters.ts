@@ -12,21 +12,24 @@ import type { WriteIntent } from "../types";
 export function buildRequestBody(
   intent: WriteIntent,
   text: string,
-  extra?: Record<string, string>
+  extra?: Record<string, string>,
+  existingSessionId?: string
 ): Record<string, string> {
-  const sessionId = crypto.randomUUID();
+  const sessionId = existingSessionId ?? crypto.randomUUID();
   const base = { session_id: sessionId, ...extra };
 
   switch (intent.type) {
-    case "rewrite":
-      return { text, mode: "quick", ...base };
-
-    case "angles":
-      // angles 接口需要 premise 字段
-      return { premise: text, count: "5", ...base };
+    case "premise":
+      return { text, material: text, ...base };
 
     case "joke_to_premise":
-      return { joke: text, ...base };
+      return { text, joke: text, ...base };
+
+    case "angles":
+      return { premise: text, text, count: "5", ...base };
+
+    case "rewrite":
+      return { text, draft: text, mode: "quick", ...base };
 
     case "feedback":
       return {
@@ -37,9 +40,7 @@ export function buildRequestBody(
         ...base,
       };
 
-    case "premise":
     default:
-      // premise / material 接口接受 text 或 material
-      return { text, material: text, ...base };
+      return { text, ...base };
   }
 }

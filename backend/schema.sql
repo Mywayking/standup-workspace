@@ -26,6 +26,25 @@ CREATE TABLE IF NOT EXISTS analysis_results (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- AI 调用日志
+CREATE TABLE IF NOT EXISTS ai_task_logs (
+  id TEXT PRIMARY KEY,
+  session_id TEXT,
+  user_id TEXT,
+  task_type TEXT NOT NULL,
+  provider TEXT,
+  model TEXT,
+  status TEXT NOT NULL,
+  latency_ms INTEGER,
+  retry_count INTEGER DEFAULT 0,
+  input_length INTEGER,
+  output_length INTEGER,
+  error_code TEXT,
+  error_message TEXT,
+  request_id TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Prompt 版本表
 CREATE TABLE IF NOT EXISTS prompt_versions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

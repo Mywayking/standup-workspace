@@ -3,10 +3,10 @@
 // Standup Workspace v3.0
 // ============================================================
 
-import { useState, useCallback } from "react";
-import { useStreamingTask } from "@/hooks/useStreamingTask";
+import { useState, useCallback, useRef } from "react";
+import { useStreamingTask } from "./useStreamingTask";
 import type { WorkCard, WriteIntent } from "../types";
-import type { StreamingMeta } from "@/hooks/useStreamingTask";
+import type { StreamMeta } from "../lib/sse";
 import { mapResultToCard, mapErrorToCard } from "../lib/cardMappers";
 import { buildRequestBody } from "../lib/requestAdapters";
 import { detectWriteIntent } from "./useWriteIntent";
@@ -18,68 +18,152 @@ interface UseWriteGenerationOptions {
   onCardCreated: (card: WorkCard) => void;
 }
 
-export function useWriteGeneration(options: UseWriteGenerationOptions) {
+export function useWriteGeneration(
+  options: UseWriteGenerationOptions,
+  activeSessionId: string | null
+) {
   const [intent, setIntent] = useState<WriteIntent | null>(null);
   const [draftTokens, setDraftTokens] = useState("");
 
-  const endpoint = intent?.endpoint ?? "/api/write/premise/stream";
+  // Refs to avoid stale closures in async callbacks
+  const intentRef = useRef<WriteIntent | null>(null);
+  const tokensRef = useRef<string>("");
+  const sessionIdRef = useRef<string | null>(null);
 
-  const task = useStreamingTask<unknown>(endpoint, {
-    timeoutMs: 120_000,
-    slowWarningMs: 25_000,
+  const task = useStreamingTask();
 
-    onToken(token: string) {
-      setDraftTokens((prev) => prev + token);
-    },
+  const start = useCallback(
+    (params: {
+      text: string;
+      sessionId: string;
+      forcedIntent?: WriteIntent;
+      extra?: Record<string, string>;
+    }) => {
+      const { text, sessionId, forcedIntent, extra } = params;
+      const nextIntent = forcedIntent ?? detectWriteIntent(text);
 
-    onDone(result: unknown, meta) {
-      if (!intent) return;
-      const card = mapResultToCard({
-        sessionId: options.sessionId,
-        intent,
-        result,
-        tokens: draftTokens,
-        meta: meta ?? undefined,
-      });
-      options.onCardCreated(card);
+      setIntent(nextIntent);
       setDraftTokens("");
-      setIntent(null);
-    },
+      tokensRef.current = "";
 
-    onError(error: string, errorCode?: string, meta?: StreamingMeta) {
-      const card = mapErrorToCard({
-        sessionId: options.sessionId,
-        error,
-        errorCode,
-        meta: meta ?? undefined,
+      // Set refs BEFORE calling task.run() so callbacks can read fresh values
+      intentRef.current = nextIntent;
+      sessionIdRef.current = sessionId || activeSessionId || null;
+
+      // Build request body
+      const resolvedSessionId = sessionId || activeSessionId || "";
+      const body = buildRequestBody(
+        nextIntent,
+        text,
+        extra,
+        resolvedSessionId || undefined
+      );
+
+      task.run(nextIntent.endpoint, body as Record<string, unknown>, {
+        onToken(token: string) {
+          tokensRef.current += token;
+          setDraftTokens(tokensRef.current);
+        },
+
+        onMeta(meta: StreamMeta) {
+          void meta;
+        },
+
+        onDone(raw?: string, tokens?: string) {
+          // Use tokens passed directly from useStreamingTask's tokensRef,
+          // bypassing React state batching which may not have flushed yet.
+          const accumulatedTokens = tokens ?? tokensRef.current;
+          const currentIntent = intentRef.current;
+          if (!currentIntent) return;
+          void raw;
+
+          const result = parseDoneResult(accumulatedTokens);
+          const cardSessionId = sessionIdRef.current ?? options.sessionId;
+
+          const card = mapResultToCard({
+            sessionId: cardSessionId,
+            intent: currentIntent,
+            result,
+            tokens: accumulatedTokens,
+            meta: convertMeta(task.state.meta),
+          });
+          options.onCardCreated(card);
+          setDraftTokens("");
+        },
+
+        onError(error: string) {
+          const currentIntent = intentRef.current;
+          const cardSessionId = sessionIdRef.current ?? options.sessionId;
+          const card = mapErrorToCard({
+            sessionId: cardSessionId,
+            error,
+            meta: convertMeta(task.state.meta),
+          });
+          options.onCardCreated(card);
+          setDraftTokens("");
+        },
       });
-      options.onCardCreated(card);
-      setDraftTokens("");
-      setIntent(null);
     },
-  });
-
-  function start(text: string, extra?: Record<string, string>) {
-    const nextIntent = detectWriteIntent(text);
-    setIntent(nextIntent);
-    setDraftTokens("");
-
-    const body = buildRequestBody(nextIntent, text, extra);
-    task.start(body as Record<string, string>);
-  }
+    [activeSessionId, options, task]
+  );
 
   function retry() {
-    if (!intent) return;
-    setDraftTokens("");
-    task.retry();
+    // retry is not yet supported — callers need to re-submit the original input
+  }
+
+  function abort() {
+    task.abort();
+    setIntent(null);
   }
 
   return {
     intent,
-    state: task.state,
+    state: {
+      isRunning: task.state.isRunning,
+      tokens: draftTokens,
+      phase: task.state.isRunning ? "thinking" : task.state.error ? "error" : "idle",
+      meta: {
+        selected_model: task.state.meta?.model,
+        provider: task.state.meta?.provider,
+        request_id: task.state.meta?.requestId,
+        total_latency_ms: task.state.meta?.totalLatencyMs,
+        attempt_count: task.state.meta?.attemptCount,
+      },
+    },
     draftTokens,
     start,
-    abort: task.abort,
+    abort,
     retry,
+  };
+}
+
+// ─── Helpers ──────────────────────────────────────────────────
+
+function parseDoneResult(tokens: string): unknown {
+  try {
+    return JSON.parse(tokens.trim());
+  } catch {
+    return { content: tokens };
+  }
+}
+
+function convertMeta(
+  meta: StreamMeta
+): {
+  selected_model: string;
+  provider?: string;
+  request_id?: string;
+  total_latency_ms: number;
+  attempt_count: number;
+  scene?: string;
+} | undefined {
+  if (!meta || Object.keys(meta).length === 0) return undefined;
+  return {
+    selected_model: meta.model ?? "",
+    provider: meta.provider,
+    request_id: meta.requestId,
+    total_latency_ms: meta.totalLatencyMs ?? 0,
+    attempt_count: meta.attemptCount ?? 1,
+    scene: meta.scene,
   };
 }

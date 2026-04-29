@@ -7,25 +7,18 @@
 
 import React, { useState, useCallback } from "react";
 import type { WorkCard, CardAction, WriteIntentType } from "./types";
-import { generateSessionTitle } from "./types";
 import { useWriteSession } from "./hooks/useWriteSession";
 import { useWriteGeneration } from "./hooks/useWriteGeneration";
 import { detectWriteIntent } from "./hooks/useWriteIntent";
+import { WRITE_ENDPOINT_MAP } from "./lib/endpointMap";
 import { ResponsiveWashiShell } from "./components/ResponsiveWashiShell";
 import { WorkSidebar } from "./components/WorkSidebar";
-import { ChatCanvas } from "./components/ChatCanvas";
-import { Composer } from "./components/Composer";
-import { WorkOutline } from "./components/WorkOutline";
-import { MobileDrawer } from "./components/MobileDrawer";
-import { MobileSheet } from "./components/MobileSheet";
-import { EmptyState } from "./components/EmptyState";
+import { WashiMainFlow } from "./WashiMainFlow";
+import { WashiRightPanel } from "./WashiRightPanel";
 
 const EXAMPLE_MATERIAL = "老板说我们要有主人翁意识，但公司裁员的时候又说我是外包。这个素材怎么写？";
 
 export function WashiWriteClient() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [outlineOpen, setOutlineOpen] = useState(false);
-
   const {
     sessions,
     activeSession,
@@ -34,17 +27,19 @@ export function WashiWriteClient() {
     createSession,
     addCard,
     setActiveSessionId,
-    removeSession,
   } = useWriteSession();
 
   // ── Generation ────────────────────────────────────────────
 
-  const generation = useWriteGeneration({
-    sessionId: activeSession?.id ?? "",
-    onCardCreated: (card: WorkCard) => {
-      addCard(card);
+  const generation = useWriteGeneration(
+    {
+      sessionId: activeSession?.id ?? "",
+      onCardCreated: (card: WorkCard) => {
+        addCard(card);
+      },
     },
-  });
+    activeSessionId
+  );
 
   // ── Submit ───────────────────────────────────────────────
 
@@ -52,7 +47,6 @@ export function WashiWriteClient() {
     (text: string) => {
       const session = activeSession ?? createSession(text);
 
-      // Add user card
       const userCard: WorkCard = {
         id: crypto.randomUUID(),
         sessionId: session.id,
@@ -65,13 +59,7 @@ export function WashiWriteClient() {
       };
       addCard(userCard);
 
-      // Update session title if new
-      if (!activeSession?.title && text.trim()) {
-        // title will be set on next addCard / createSession
-      }
-
-      // Start generation
-      generation.start(text);
+      generation.start({ text, sessionId: session.id });
     },
     [activeSession, createSession, addCard, generation]
   );
@@ -81,19 +69,9 @@ export function WashiWriteClient() {
   const handleAction = useCallback(
     (action: CardAction, card: WorkCard) => {
       const text = card.content;
-      const intentType: WriteIntentType = action.nextIntent ?? "rewrite";
 
-      // Pre-fill composer with card content + intent
-      const prefix =
-        intentType === "angles" ? "找角度：" :
-        intentType === "rewrite" ? "改稿：" :
-        intentType === "premise" ? "提炼前提：" :
-        "";
-
-      // For "find_angles" directly from a premise card, start immediately
       if (action.type === "find_angles") {
         const session = activeSession ?? createSession(text);
-
         const userCard: WorkCard = {
           id: crypto.randomUUID(),
           sessionId: session.id,
@@ -105,13 +83,12 @@ export function WashiWriteClient() {
           createdAt: Date.now(),
         };
         addCard(userCard);
-        generation.start(text);
+        generation.start({ text, sessionId: session.id });
         return;
       }
 
       if (action.type === "expand_to_draft" || action.type === "make_sharper" || action.type === "make_softer") {
         const session = activeSession ?? createSession(text);
-
         const userCard: WorkCard = {
           id: crypto.randomUUID(),
           sessionId: session.id,
@@ -123,22 +100,26 @@ export function WashiWriteClient() {
           createdAt: Date.now(),
         };
         addCard(userCard);
-        generation.start(text);
+        const forcedIntent = {
+          type: action.nextIntent ?? "rewrite",
+          endpoint: WRITE_ENDPOINT_MAP[action.nextIntent ?? "rewrite"] as string,
+          confidence: 1,
+          reason: "action forced intent",
+        };
+        generation.start({ text, sessionId: session.id, forcedIntent });
         return;
       }
 
-      // Default: restart with the same content
-      generation.start(text);
+      generation.start({ text, sessionId: activeSession?.id ?? activeSessionId ?? "" });
     },
-    [activeSession, createSession, addCard, generation]
+    [activeSession, activeSessionId, createSession, addCard, generation]
   );
 
-  // ── New session ──────────────────────────────────────────
+  // ── Retry ────────────────────────────────────────────────
 
-  const handleNew = useCallback(() => {
-    const session = createSession("");
-    setSidebarOpen(false);
-  }, [createSession]);
+  const handleRetry = useCallback(() => {
+    if (activeSession) generation.retry();
+  }, [activeSession, generation]);
 
   // ── Try example ──────────────────────────────────────────
 
@@ -149,39 +130,16 @@ export function WashiWriteClient() {
   // ── Session select ────────────────────────────────────────
 
   const handleSelectSession = useCallback(
-    (id: string) => {
-      setActiveSessionId(id);
-      setSidebarOpen(false);
-    },
+    (id: string) => setActiveSessionId(id),
     [setActiveSessionId]
   );
-
-  // ── Retry ────────────────────────────────────────────────
-
-  const handleRetry = useCallback(() => {
-    if (activeSession) {
-      generation.retry();
-    }
-  }, [activeSession, generation]);
 
   // ── Topbar ───────────────────────────────────────────────
 
   const topbar = (
-    <header className="flex items-center gap-2.5 px-4 py-3.5 border-b border-black/10 md:px-6">
-      {/* Mobile: left hamburger */}
-      <button
-        type="button"
-        onClick={() => setSidebarOpen(true)}
-        className="
-          md:hidden w-9 h-9 rounded-full
-          border border-black/10 bg-white/30
-          flex items-center justify-center
-          text-[#8A8174] text-lg
-        "
-        aria-label="打开作品列表"
-      >
-        ☰
-      </button>
+    <header className="flex items-center gap-2.5 px-4 py-3.5 border-b border-black/10 md:px-6 bg-[#FBF8F0]">
+      {/* Mobile: left hamburger (controlled by MobileDrawer) */}
+      <div className="md:hidden w-9 h-9 shrink-0" />
 
       {/* Title */}
       <div className="flex-1 min-w-0">
@@ -206,93 +164,52 @@ export function WashiWriteClient() {
           </span>
         )}
       </div>
-
-      {/* Mobile: right outline button */}
-      <button
-        type="button"
-        onClick={() => setOutlineOpen(true)}
-        className="
-          xl:hidden w-9 h-9 rounded-full
-          border border-black/10 bg-white/30
-          flex items-center justify-center
-          text-[#8A8174] text-base
-        "
-        aria-label="打开作品结构"
-      >
-        ⌘
-      </button>
     </header>
   );
 
-  // ── Main area ────────────────────────────────────────────
+  // ── Main content (topbar + card flow + composer) ─────────
 
-  const mainArea = (
-    <div className="flex flex-col h-full">
+  const mainContent = (
+    <div className="flex flex-col h-full bg-[#FBF8F0]">
       {topbar}
-
-      {/* Chat area */}
-      <div className="flex-1 min-h-0 flex flex-col">
-        {activeCards.length === 0 && generation.state.phase !== "thinking" && !generation.draftTokens ? (
-          <EmptyState onTryExample={handleTryExample} />
-        ) : (
-          <ChatCanvas
-            cards={activeCards}
-            isThinking={generation.state.phase === "thinking"}
-            draftTokens={generation.draftTokens}
-            onAction={handleAction}
-            onRetry={handleRetry}
-          />
-        )}
-      </div>
-
-      {/* Composer */}
-      <Composer
-        disabled={generation.state.phase === "thinking"}
+      <WashiMainFlow
+        cards={activeCards}
+        isGenerating={generation.state.isRunning}
+        draftTokens={generation.state.tokens}
         onSubmit={handleSubmit}
       />
     </div>
   );
 
-  // ── Sidebar content ──────────────────────────────────────
+  // ── Sidebar ─────────────────────────────────────────────
 
   const sidebarContent = (
     <WorkSidebar
       sessions={sessions}
       activeSessionId={activeSessionId}
       onSelect={handleSelectSession}
-      onNew={handleNew}
+      onNew={() => createSession("")}
     />
   );
 
-  // ── Outline content ──────────────────────────────────────
+  // ── Outline ─────────────────────────────────────────────
 
   const outlineContent = (
-    <WorkOutline
+    <WashiRightPanel
       session={activeSession}
-      cards={activeCards}
-      activeCardId={activeCards[activeCards.length - 1]?.id}
+      currentStep={activeCards[activeCards.length - 1]?.type ?? "material"}
+      model={generation.state.meta?.selected_model}
+      latencyMs={null}
     />
   );
 
   // ── Render ───────────────────────────────────────────────
 
   return (
-    <>
-      <ResponsiveWashiShell
-        sidebar={sidebarContent}
-        outline={outlineContent}
-        main={mainArea}
-      />
-
-      {/* Mobile: sidebar drawer */}
-      <MobileDrawer open={sidebarOpen} onClose={() => setSidebarOpen(false)}>
-        {sidebarContent}
-      </MobileDrawer>
-
-      {/* Mobile: outline sheet */}
-      <MobileSheet open={outlineOpen} onClose={() => setOutlineOpen(false)}>
-        {outlineContent}
-      </MobileSheet>
-    </>
+    <ResponsiveWashiShell
+      sidebar={sidebarContent}
+      outline={outlineContent}
+      main={mainContent}
+    />
   );
 }

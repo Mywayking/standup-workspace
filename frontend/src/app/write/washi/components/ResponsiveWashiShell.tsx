@@ -4,65 +4,35 @@
 // ============================================================
 
 import React from "react";
+import { WorkSidebar } from "./WorkSidebar";
+import { WashiRightPanel } from "../WashiRightPanel";
 
 interface Props {
+  /** Left sidebar content (session list) */
   sidebar: React.ReactNode;
+  /** Right outline panel content */
   outline: React.ReactNode;
+  /** Main content area */
   main: React.ReactNode;
 }
 
 export function ResponsiveWashiShell({ sidebar, outline, main }: Props) {
   return (
-    <div
-      className="min-h-[100svh] bg-[#F5EFE3] text-[#25231F] md:h-[100dvh] md:overflow-hidden"
-      // Dot-grid texture via pseudo-element in globals.css
-    >
-      <div
-        className="
-          grid min-h-[100svh] grid-cols-1
-          md:h-[100dvh] md:grid-cols-[248px_minmax(0,1fr)]
-          xl:grid-cols-[248px_minmax(0,1fr)_288px]
-          gap-0 md:gap-3
-          p-0 md:p-4
-        "
-      >
-        {/* Left: sidebar — hidden on mobile, shown on md+, xl always */}
-        <aside
-          className="
-            hidden min-h-0 overflow-hidden rounded-none md:rounded-[24px]
-            border-0 md:border md:border-black/10
-            bg-[#FBF8F0]/85 md:bg-[#FBF8F0]
-            flex flex-col
-          "
-        >
-          {sidebar}
-        </aside>
+    <div className="flex h-screen overflow-hidden bg-[#F5EFE3]">
+      {/* Left: sidebar — hidden on mobile, shown on md+ */}
+      <aside className="hidden md:flex w-[260px] flex-shrink-0 border-r border-black/8 overflow-hidden">
+        {sidebar}
+      </aside>
 
-        {/* Center: main content — always shown */}
-        <main
-          className="
-            min-h-0 min-w-0 overflow-hidden
-            bg-[#FBF8F0]/92 md:rounded-[24px]
-            border-0 md:border md:border-black/10
-            flex flex-col
-          "
-          style={{ height: "100svh", maxHeight: "100dvh" }}
-        >
-          {main}
-        </main>
+      {/* Center: main content — always shown */}
+      <main className="flex-1 min-w-0 overflow-hidden flex flex-col">
+        {main}
+      </main>
 
-        {/* Right: outline — hidden on mobile/tablet, shown on xl+ */}
-        <aside
-          className="
-            hidden min-h-0 overflow-hidden rounded-none xl:rounded-[24px]
-            border-0 xl:border xl:border-black/10
-            bg-[#FBF8F0]/85
-            flex flex-col
-          "
-        >
-          {outline}
-        </aside>
-      </div>
+      {/* Right: outline — hidden on mobile/tablet, shown on lg+ */}
+      <aside className="hidden lg:flex w-[300px] flex-shrink-0 border-l border-black/8 overflow-hidden">
+        {outline}
+      </aside>
     </div>
   );
 }

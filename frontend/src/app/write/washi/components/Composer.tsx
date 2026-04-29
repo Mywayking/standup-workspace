@@ -7,13 +7,15 @@ import React, { useState, useRef, useCallback } from "react";
 
 interface Props {
   disabled?: boolean;
+  generating?: boolean;
   onSubmit: (text: string) => void;
+  onCancel?: () => void;
   placeholder?: string;
 }
 
 const QUICK_LABELS = ["输入素材", "提炼前提", "找角度", "开放麦口语", "记录反馈"];
 
-export function Composer({ disabled, onSubmit, placeholder = "写下一个素材、一个念头，或者一句还没成熟的梗。" }: Props) {
+export function Composer({ disabled, generating = false, onSubmit, onCancel, placeholder = "写下一个素材、一个念头，或者一句还没成熟的梗。" }: Props) {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -94,7 +96,7 @@ export function Composer({ disabled, onSubmit, placeholder = "写下一个素材
         <button
           type="button"
           disabled={disabled || !text.trim()}
-          onClick={submit}
+          onClick={generating ? onCancel : submit}
           className="
             rounded-2xl px-5 py-3 text-[14px] font-semibold
             bg-[#A94737] text-[#FFFAF4]
@@ -102,7 +104,7 @@ export function Composer({ disabled, onSubmit, placeholder = "写下一个素材
             hover:bg-[#8f3a2c] transition-colors
           "
         >
-          写作
+          {generating ? "取消生成" : "写作"}
         </button>
       </div>
 

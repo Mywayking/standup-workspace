@@ -217,9 +217,9 @@ async def premise_stream(req: dict, request: Request):
     from ..database import SessionLocal
     user = _current_user(request, SessionLocal())
     user_id = str(user.ulid) if user else None
-    text = req.get("text", "").strip()
-    if len(text) < 5:
-        raise HTTPException(400, "素材太短了（至少5字）")
+    text = (req.get("text") or req.get("material") or "").strip()
+    if len(text) < 3:
+        raise HTTPException(400, "素材太短了（至少3字）")
 
     request_id = new_request_id("wp")
     set_request_context(request_id, "write/premise/stream")
@@ -239,7 +239,7 @@ async def joke_to_premise_stream(req: dict, request: Request):
     from ..database import SessionLocal
     user = _current_user(request, SessionLocal())
     user_id = str(user.ulid) if user else None
-    text = req.get("text", "").strip()
+    text = (req.get("text") or req.get("joke") or "").strip()
     if len(text) < 3:
         raise HTTPException(400, "请输入一句完整的梗（至少3个字）")
 
@@ -266,9 +266,9 @@ async def angles_stream(req: dict, request: Request):
     from ..database import SessionLocal
     user = _current_user(request, SessionLocal())
     user_id = str(user.ulid) if user else None
-    premise = req.get("premise", "").strip()
-    if len(premise) < 3:
-        raise HTTPException(400, "输入的前提太短了（至少3个字）")
+    premise = (req.get("premise") or req.get("text") or "").strip()
+    if len(premise) < 2:
+        raise HTTPException(400, "输入的前提太短了（至少2个字）")
 
     request_id = new_request_id("wfa")
     set_request_context(request_id, "write/angles/stream")
@@ -288,7 +288,7 @@ async def rewrite_stream(req: dict, request: Request):
     from ..database import SessionLocal
     user = _current_user(request, SessionLocal())
     user_id = str(user.ulid) if user else None
-    text = req.get("text", "").strip()
+    text = (req.get("text") or req.get("draft") or "").strip()
     if len(text) < 20:
         raise HTTPException(400, "段子内容太短了（至少20字）")
 
