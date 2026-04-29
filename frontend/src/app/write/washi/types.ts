@@ -141,3 +141,19 @@ export function newWorkSession(sourceInput: string): WorkSession {
     cards: [],
   };
 }
+
+/**
+ * Build a sourcePath by appending the current step type to the parent's path.
+ * Avoids duplicating the last step if it matches the current step.
+ */
+export function buildSourcePath(
+  parentCard: { sourcePath?: string[]; type?: string } | null | undefined,
+  currentStep: string
+): string[] {
+  const base: string[] = parentCard?.sourcePath?.length
+    ? [...parentCard.sourcePath]
+    : parentCard?.type
+    ? [parentCard.type]
+    : ["用户输入"];
+  return [...base, currentStep];
+}

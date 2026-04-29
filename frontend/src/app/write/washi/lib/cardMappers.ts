@@ -6,6 +6,9 @@
 import type { WorkCard, WriteIntent, WorkCardType } from "../types";
 import type { StreamingMeta } from "@/hooks/useStreamingTask";
 
+// Re-export so callers don't need an extra import
+export { buildSourcePath } from "../types";
+
 // ─── 步骤标签映射 ────────────────────────────────────────────
 
 const CARD_TITLE_MAP: Record<string, string> = {
@@ -32,21 +35,38 @@ const CARD_KICKER_MAP: Record<string, string> = {
 
 // ─── 结果映射 ────────────────────────────────────────────────
 
+export interface CardMappingContext {
+  /** The card that triggered this generation (user or assistant source). */
+  parentCard?: Pick<WorkCard, "id" | "type" | "sourcePath"> | null;
+}
+
 export function mapResultToCard(input: {
   sessionId: string;
   intent: WriteIntent;
   result: unknown;
   tokens: string;
   meta?: StreamingMeta;
+  context?: CardMappingContext;
 }): WorkCard {
-  const { sessionId, intent, result, tokens, meta } = input;
+  const { sessionId, intent, result, tokens, meta, context } = input;
+
+  const parentCard = context?.parentCard;
+  const currentStep = intent.type === "angles" ? "angle" : intent.type;
+
+
+  // Build sourcePath by inheriting parent's path (if any) and appending the current step
+  const parentPath = parentCard?.sourcePath;
+  const pathBase: string[] = parentPath?.length ? [...parentPath] : parentCard ? [parentCard.type] : ["用户输入"];
+  const sourcePath: string[] =
+    pathBase[pathBase.length - 1] === currentStep ? pathBase : [...pathBase, currentStep];
 
   const base = {
     id: crypto.randomUUID(),
     sessionId,
     role: "assistant" as const,
     rawData: result,
-    sourcePath: [intent.type] as string[],
+    sourcePath,
+    sourceCardId: parentCard?.id,
     createdAt: Date.now(),
     meta: {
       endpoint: intent.endpoint,

@@ -1,5 +1,9 @@
+/**
+ * useWorkflowSession unit tests.
+ * Tests the pure query/chain functions that don't require React hooks context.
+ */
+
 import { buildSourcePath } from "../../app/write/washi/types";
-import type { WorkCard } from "../../app/write/washi/types";
 
 describe("buildSourcePath", () => {
   test("no parent → starts with 用户输入", () => {
@@ -12,43 +16,68 @@ describe("buildSourcePath", () => {
     expect(result).toEqual(["用户输入", "premise"]);
   });
 
-  test("material card parent → appends premise", () => {
-    const parent: Pick<WorkCard, "sourcePath"> = {
-      sourcePath: ["用户输入"],
-    };
-    const result = buildSourcePath(parent, "premise");
+  test("material card → appends premise", () => {
+    const result = buildSourcePath({ sourcePath: ["用户输入"] }, "premise");
     expect(result).toEqual(["用户输入", "premise"]);
   });
 
-  test("premise card parent → appends angle", () => {
-    const parent: Pick<WorkCard, "sourcePath"> = {
-      sourcePath: ["用户输入", "premise"],
-    };
-    const result = buildSourcePath(parent, "angle");
+  test("premise card → appends angle", () => {
+    const result = buildSourcePath(
+      { sourcePath: ["用户输入", "premise"] },
+      "angle"
+    );
     expect(result).toEqual(["用户输入", "premise", "angle"]);
   });
 
-  test("angle card parent → appends rewrite", () => {
-    const parent: Pick<WorkCard, "sourcePath"> = {
-      sourcePath: ["用户输入", "premise", "angle"],
-    };
-    const result = buildSourcePath(parent, "rewrite");
+  test("angle card → appends rewrite", () => {
+    const result = buildSourcePath(
+      { sourcePath: ["用户输入", "premise", "angle"] },
+      "rewrite"
+    );
     expect(result).toEqual(["用户输入", "premise", "angle", "rewrite"]);
   });
 
-  test("rewrite card parent → appends rewrite (iteration allowed)", () => {
-    const parent: Pick<WorkCard, "sourcePath"> = {
-      sourcePath: ["用户输入", "premise", "angle", "rewrite"],
-    };
-    const result = buildSourcePath(parent, "rewrite");
-    expect(result).toEqual(["用户输入", "premise", "angle", "rewrite", "rewrite"]);
+  test("rewrite card → appends rewrite (iteration allowed)", () => {
+    const result = buildSourcePath(
+      { sourcePath: ["用户输入", "premise", "angle", "rewrite"] },
+      "rewrite"
+    );
+    expect(result).toEqual([
+      "用户输入",
+      "premise",
+      "angle",
+      "rewrite",
+      "rewrite",
+    ]);
   });
 
-  test("parent with existing path preserves it", () => {
-    const parent: Pick<WorkCard, "sourcePath"> = {
-      sourcePath: ["用户输入", "premise", "angle", "rewrite", "rewrite"],
-    };
-    const result = buildSourcePath(parent, "rewrite");
-    expect(result).toEqual(["用户输入", "premise", "angle", "rewrite", "rewrite", "rewrite"]);
+  test("deep chain preserves full path", () => {
+    const result = buildSourcePath(
+      {
+        sourcePath: [
+          "用户输入",
+          "premise",
+          "premise",
+          "angle",
+          "rewrite",
+          "rewrite",
+        ],
+      },
+      "rewrite"
+    );
+    expect(result).toEqual([
+      "用户输入",
+      "premise",
+      "premise",
+      "angle",
+      "rewrite",
+      "rewrite",
+      "rewrite",
+    ]);
+  });
+
+  test("parent with only type (no sourcePath) → starts from type", () => {
+    const result = buildSourcePath({ type: "premise" }, "angle");
+    expect(result).toEqual(["premise", "angle"]);
   });
 });

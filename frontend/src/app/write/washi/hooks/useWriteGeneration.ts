@@ -13,6 +13,15 @@ import { detectWriteIntent } from "./useWriteIntent";
 
 // ─── Hook ────────────────────────────────────────────────────
 
+interface StartParams {
+  text: string;
+  sessionId: string;
+  forcedIntent?: WriteIntent;
+  extra?: Record<string, string>;
+  /** The card that triggered this generation — used to build parentId + sourcePath chain. */
+  parentCard?: Pick<WorkCard, "id" | "type" | "sourcePath">;
+}
+
 interface UseWriteGenerationOptions {
   sessionId: string;
   onCardCreated: (card: WorkCard) => void;
@@ -29,17 +38,13 @@ export function useWriteGeneration(
   const intentRef = useRef<WriteIntent | null>(null);
   const tokensRef = useRef<string>("");
   const sessionIdRef = useRef<string | null>(null);
+  const parentCardRef = useRef<StartParams["parentCard"]>(null);
 
   const task = useStreamingTask();
 
   const start = useCallback(
-    (params: {
-      text: string;
-      sessionId: string;
-      forcedIntent?: WriteIntent;
-      extra?: Record<string, string>;
-    }) => {
-      const { text, sessionId, forcedIntent, extra } = params;
+    (params: StartParams) => {
+      const { text, sessionId, forcedIntent, extra, parentCard } = params;
       const nextIntent = forcedIntent ?? detectWriteIntent(text);
 
       setIntent(nextIntent);
@@ -49,6 +54,7 @@ export function useWriteGeneration(
       // Set refs BEFORE calling task.run() so callbacks can read fresh values
       intentRef.current = nextIntent;
       sessionIdRef.current = sessionId || activeSessionId || null;
+      parentCardRef.current = parentCard ?? undefined;
 
       // Build request body
       const resolvedSessionId = sessionId || activeSessionId || "";
@@ -86,6 +92,7 @@ export function useWriteGeneration(
             result,
             tokens: accumulatedTokens,
             meta: convertMeta(task.state.meta),
+            context: { parentCard: parentCardRef.current },
           });
           options.onCardCreated(card);
           setDraftTokens("");
