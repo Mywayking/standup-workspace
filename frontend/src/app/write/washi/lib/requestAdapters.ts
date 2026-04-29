@@ -19,14 +19,17 @@ export function buildRequestBody(
   const base = { session_id: sessionId, ...extra };
 
   switch (intent.type) {
-    case "rewrite":
-      return { text, mode: "quick", ...base };
-
-    case "angles":
-      return { premise: text, count: "5", ...base };
+    case "premise":
+      return { text, material: text, ...base };
 
     case "joke_to_premise":
-      return { text, ...base };
+      return { text, joke: text, ...base };
+
+    case "angles":
+      return { premise: text, text, count: "5", ...base };
+
+    case "rewrite":
+      return { text, draft: text, mode: "quick", ...base };
 
     case "feedback":
       return {
@@ -37,8 +40,7 @@ export function buildRequestBody(
         ...base,
       };
 
-    case "premise":
     default:
-      return { text, material: text, ...base };
+      return { text, ...base };
   }
 }

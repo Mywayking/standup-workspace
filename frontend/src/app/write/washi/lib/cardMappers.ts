@@ -89,7 +89,7 @@ function extractContent(
   switch (intentType) {
     case "joke_to_premise": {
       const rec = r.recommendation as Record<string, unknown> | undefined;
-      const recText = rec?.text as string | undefined;
+      const recTitle = (rec?.title as string | undefined) ?? (rec?.text as string | undefined);
       const firstPremise =
         Array.isArray(r.premises) && r.premises.length > 0
           ? ((r.premises[0] as Record<string, unknown>)?.title as string | undefined) ??
@@ -97,7 +97,7 @@ function extractContent(
             (typeof r.premises[0] === "string" ? r.premises[0] : undefined)
           : undefined;
       const premise =
-        recText ??
+        recTitle ??
         firstPremise ??
         (r.core_topic as string | undefined) ??
         fallback;
@@ -105,17 +105,7 @@ function extractContent(
     }
 
     case "premise": {
-      // Support both flat {premise: string} and structured {recommendation: {text: string}} formats
-      const rec = r.recommendation as Record<string, unknown> | undefined;
-      const recText = rec?.text as string | undefined;
-      const premise =
-        (r.premise as string | undefined) ??
-        (r.core_premise as string | undefined) ??
-        recText ??
-        ((r.result as Record<string, unknown>)?.premise as string | undefined) ??
-        ((r.result as Record<string, unknown>)?.core_premise as string | undefined) ??
-        fallback;
-      return premise;
+      return formatPremiseContent(r, fallback);
     }
 
     case "angles": {
@@ -124,10 +114,14 @@ function extractContent(
         return angles
           .map((item, idx) => {
             if (typeof item === "string") return `${idx + 1}. ${item}`;
-            const title = (item as Record<string, unknown>).title ?? "";
+            const obj = item as Record<string, unknown>;
+            const title = (obj.title as string | undefined) ?? "";
             const desc =
-              (item as Record<string, unknown>).description ??
-              (item as Record<string, unknown>).content ?? "";
+              (obj.description as string | undefined) ??
+              (obj.content as string | undefined) ??
+              (obj.expansion_idea as string | undefined) ??
+              (obj.premise as string | undefined) ??
+              "";
             return `${idx + 1}. ${title}${title && desc ? " — " : ""}${desc}`;
           })
           .join("\n");
@@ -136,14 +130,7 @@ function extractContent(
     }
 
     case "rewrite": {
-      const script =
-        (r.improved_script as string | undefined) ??
-        ((r.result as Record<string, unknown>)?.improved_script as string | undefined) ??
-        (r.script as string | undefined) ??
-        ((r.result as Record<string, unknown>)?.script as string | undefined) ??
-        ((r.result as Record<string, unknown>)?.improved as string | undefined) ??
-        fallback;
-      return script;
+      return formatRewriteContent(r, fallback);
     }
 
     case "feedback": {
@@ -159,6 +146,118 @@ function extractContent(
     default:
       return fallback;
   }
+}
+
+// ─── Rewrite 格式化 ──────────────────────────────────────────
+
+function formatRewriteContent(r: Record<string, unknown>, fallback: string): string {
+  const lines: string[] = [];
+
+  // Primary output: 改稿版本
+  const improvedScript =
+    (r.improved_script as string | undefined) ??
+    ((r.result as Record<string, unknown>)?.improved_script as string | undefined) ??
+    (r.script as string | undefined) ??
+    ((r.result as Record<string, unknown>)?.script as string | undefined) ??
+    ((r.result as Record<string, unknown>)?.improved as string | undefined) ??
+    (fallback || "");
+
+  lines.push("━━ 改稿版本 ━━");
+  lines.push("");
+  lines.push(improvedScript);
+
+  // 修改理由
+  const scriptChanges = r.script_changes ?? r.suggestions ?? r.changes;
+  const suggestionItems: Array<{ text?: string; reason?: string; original?: string; improved?: string; technique_added?: string }> =
+    Array.isArray(scriptChanges) ? scriptChanges : [];
+  const reasons = suggestionItems
+    .map((s) => s.reason ?? (s.text && !s.technique_added ? s.text : undefined))
+    .filter(Boolean) as string[];
+  if (reasons.length > 0) {
+    lines.push("");
+    lines.push("━━ 修改理由 ━━");
+    reasons.forEach((reason) => {
+      lines.push(`· ${reason}`);
+    });
+  }
+
+  // 新增技巧
+  const techniquesAdded = suggestionItems
+    .map((s) => s.technique_added)
+    .filter(Boolean) as string[];
+  const allTechniques: string[] = [
+    ...techniquesAdded,
+    ...((r.techniques as string[] | undefined) ?? []),
+    ...(((r.result as Record<string, unknown>)?.techniques as string[] | undefined) ?? []),
+  ];
+  const uniqueTechniques = [...new Set(allTechniques)];
+  if (uniqueTechniques.length > 0) {
+    lines.push("");
+    lines.push("━━ 新增技巧 ━━");
+    uniqueTechniques.forEach((tech) => {
+      lines.push(`· ${tech}`);
+    });
+  }
+
+  // 优化点
+  const evalMap = r.evaluation as Record<string, string> | undefined;
+  if (evalMap && Object.keys(evalMap).length > 0) {
+    lines.push("");
+    lines.push("━━ 优化点 ━━");
+    Object.entries(evalMap).forEach(([key, val]) => {
+      if (val) lines.push(`· ${key}：${val}`);
+    });
+  }
+
+  return lines.join("\n");
+}
+
+// ─── Premise 格式化 ─────────────────────────────────────────
+
+function formatPremiseContent(r: Record<string, unknown>, fallback: string): string {
+  const lines: string[] = [];
+
+  // 核心前提
+  const premise =
+    (r.premise as string | undefined) ??
+    (r.core_premise as string | undefined) ??
+    (r.text as string | undefined) ??
+    fallback;
+  lines.push("━━ 前提 ━━");
+  lines.push(premise);
+
+  // 主题
+  const theme = r.theme as string | undefined;
+  if (theme) {
+    lines.push("");
+    lines.push("━━ 主题 ━━");
+    lines.push(theme);
+  }
+
+  // 态度
+  const attitude = r.attitude as string | undefined;
+  if (attitude) {
+    lines.push("");
+    lines.push("━━ 态度 ━━");
+    lines.push(attitude);
+  }
+
+  // 推荐前提
+  const rec = r.recommendation as Record<string, unknown> | undefined;
+  if (rec) {
+    const recText = rec.text as string | undefined;
+    const recReason = rec.reason as string | undefined;
+    if (recText) {
+      lines.push("");
+      lines.push("━━ 推荐前提 ━━");
+      lines.push(recText);
+      if (recReason) {
+        lines.push(`理由：${recReason}`);
+      }
+    }
+  }
+
+  return lines.length > 2 ? lines.join("\n") : premise;
 }
 
 // ─── 动作按钮 ────────────────────────────────────────────────
