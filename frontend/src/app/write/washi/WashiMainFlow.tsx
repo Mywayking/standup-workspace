@@ -16,6 +16,7 @@ interface Props {
   isGenerating: boolean;
   draftTokens: string;
   onSubmit: (text: string) => void;
+  onAction?: (action: import("./types").CardAction, card: WorkCard) => void;
 }
 
 function StreamingArea({ text }: { text: string }) {
@@ -47,7 +48,7 @@ function ThinkingIndicator() {
   );
 }
 
-export function WashiMainFlow({ cards, isGenerating, draftTokens, onSubmit }: Props) {
+export function WashiMainFlow({ cards, isGenerating, draftTokens, onSubmit, onAction }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when cards or draft tokens change
@@ -72,6 +73,7 @@ export function WashiMainFlow({ cards, isGenerating, draftTokens, onSubmit }: Pr
             {userCards.map((card) => (
               <div
                 key={card.id}
+                data-testid={`card-${card.type}`}
                 className="max-w-[680px] ml-auto mr-0 rounded-2xl bg-[#25231F]/5 border border-black/10 px-4 py-3"
               >
                 <p className="text-[13px] text-[#8A8174] leading-relaxed">{card.content}</p>
@@ -80,7 +82,7 @@ export function WashiMainFlow({ cards, isGenerating, draftTokens, onSubmit }: Pr
 
             {/* Assistant response cards */}
             {assistantCards.map((card) => (
-              <CreationCard key={card.id} card={card} />
+              <CreationCard key={card.id} card={card} onAction={onAction} />
             ))}
 
             {/* Streaming output */}

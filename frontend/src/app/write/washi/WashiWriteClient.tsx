@@ -5,11 +5,11 @@
 
 "use client";
 
-import React, { useState, useCallback } from "react";
-import type { WorkCard, CardAction, WriteIntentType } from "./types";
+import React, { useCallback } from "react";
+import type { WorkCard, CardAction } from "./types";
+import { buildSourcePath } from "./types";
 import { useWriteSession } from "./hooks/useWriteSession";
 import { useWriteGeneration } from "./hooks/useWriteGeneration";
-import { detectWriteIntent } from "./hooks/useWriteIntent";
 import { WRITE_ENDPOINT_MAP } from "./lib/endpointMap";
 import { ResponsiveWashiShell } from "./components/ResponsiveWashiShell";
 import { WorkSidebar } from "./components/WorkSidebar";
@@ -59,7 +59,7 @@ export function WashiWriteClient() {
       };
       addCard(userCard);
 
-      generation.start({ text, sessionId: session.id });
+      generation.start({ text, sessionId: session.id, parentCard: userCard });
     },
     [activeSession, createSession, addCard, generation]
   );
@@ -70,6 +70,14 @@ export function WashiWriteClient() {
     (action: CardAction, card: WorkCard) => {
       const text = card.content;
 
+      // The card that will serve as the parent for the generated content.
+      // We pass the minimal shape needed by buildSourcePath + parentId chain.
+      const parentCard: Pick<WorkCard, "id" | "type" | "sourcePath"> = {
+        id: card.id,
+        type: card.type,
+        sourcePath: card.sourcePath,
+      };
+
       if (action.type === "find_angles") {
         const session = activeSession ?? createSession(text);
         const userCard: WorkCard = {
@@ -79,15 +87,25 @@ export function WashiWriteClient() {
           role: "user",
           title: "用户输入",
           content: text,
-          sourcePath: ["用户输入"],
+          sourcePath: buildSourcePath(parentCard, card.type),
           createdAt: Date.now(),
         };
         addCard(userCard);
-        generation.start({ text, sessionId: session.id });
+        const forcedIntent = {
+          type: action.nextIntent ?? "angles",
+          endpoint: WRITE_ENDPOINT_MAP[action.nextIntent ?? "angles"] as string,
+          confidence: 1,
+          reason: "action forced intent",
+        };
+        generation.start({ text, sessionId: session.id, forcedIntent, parentCard: userCard });
         return;
       }
 
-      if (action.type === "expand_to_draft" || action.type === "make_sharper" || action.type === "make_softer") {
+      if (
+        action.type === "expand_to_draft" ||
+        action.type === "make_sharper" ||
+        action.type === "make_softer"
+      ) {
         const session = activeSession ?? createSession(text);
         const userCard: WorkCard = {
           id: crypto.randomUUID(),
@@ -96,7 +114,7 @@ export function WashiWriteClient() {
           role: "user",
           title: "用户输入",
           content: text,
-          sourcePath: ["用户输入"],
+          sourcePath: buildSourcePath(parentCard, card.type),
           createdAt: Date.now(),
         };
         addCard(userCard);
@@ -106,11 +124,20 @@ export function WashiWriteClient() {
           confidence: 1,
           reason: "action forced intent",
         };
-        generation.start({ text, sessionId: session.id, forcedIntent });
+        generation.start({
+          text,
+          sessionId: session.id,
+          forcedIntent,
+          parentCard: userCard,
+        });
         return;
       }
 
-      generation.start({ text, sessionId: activeSession?.id ?? activeSessionId ?? "" });
+      generation.start({
+        text,
+        sessionId: activeSession?.id ?? activeSessionId ?? "",
+        parentCard,
+      });
     },
     [activeSession, activeSessionId, createSession, addCard, generation]
   );
@@ -177,6 +204,7 @@ export function WashiWriteClient() {
         isGenerating={generation.state.isRunning}
         draftTokens={generation.state.tokens}
         onSubmit={handleSubmit}
+        onAction={handleAction}
       />
     </div>
   );

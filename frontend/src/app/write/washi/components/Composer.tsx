@@ -79,6 +79,7 @@ export function Composer({ disabled, generating = false, onSubmit, onCancel, pla
         "
       >
         <textarea
+          data-testid="material-input"
           ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -97,6 +98,7 @@ export function Composer({ disabled, generating = false, onSubmit, onCancel, pla
           type="button"
           disabled={disabled || !text.trim()}
           onClick={generating ? onCancel : submit}
+          data-testid="submit-write"
           className="
             rounded-2xl px-5 py-3 text-[14px] font-semibold
             bg-[#A94737] text-[#FFFAF4]

@@ -44,7 +44,10 @@ export function CreationCard({ card, onAction, onSourceClick }: Props) {
   const angles = isAngleCard ? parseAngles(card.content) : [];
 
   return (
-    <article className="max-w-[800px] border border-black/16 rounded-3xl bg-[#FBF8F0]/96 overflow-hidden shadow-sm">
+    <article
+      data-testid={`card-${card.type}`}
+      className="max-w-[800px] border border-black/16 rounded-3xl bg-[#FBF8F0]/96 overflow-hidden shadow-sm"
+    >
       {/* Header */}
       <div className="flex items-center justify-between gap-3 px-4 py-3.5 border-b border-black/10">
         <div>
@@ -127,6 +130,7 @@ export function CreationCard({ card, onAction, onSourceClick }: Props) {
             {card.actions.map((action) => (
               <button
                 key={action.id}
+                data-testid={`action-${action.type}`}
                 onClick={() => onAction?.(action, card)}
                 className={`
                   text-[13px] px-4 py-2 rounded-full transition-colors

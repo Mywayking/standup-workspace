@@ -42,7 +42,6 @@ export function detectWriteIntent(text: string): WriteIntent {
   if (
     input.includes("改稿") ||
     input.includes("润色") ||
-    input.includes("优化") ||
     input.includes("更好笑") ||
     input.includes("更毒舌") ||
     len > 180
