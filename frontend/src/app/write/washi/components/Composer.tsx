@@ -52,8 +52,8 @@ export function Composer({ disabled, generating = false, onSubmit, onCancel, pla
         md:px-4 md:pt-4
       "
     >
-      {/* Quick chips */}
-      <div className="flex gap-2 overflow-x-auto pb-3 mb-2 scrollbar-hide">
+      {/* Quick chips — hidden on mobile, visible on md+ */}
+      <div className="hidden md:flex gap-2 overflow-x-auto pb-3 mb-2 scrollbar-hide">
         {QUICK_LABELS.map((label) => (
           <button
             key={label}
@@ -110,7 +110,7 @@ export function Composer({ disabled, generating = false, onSubmit, onCancel, pla
         </button>
       </div>
 
-      <p className="text-[11px] text-[#C5BAAA] text-center mt-2">
+      <p className="hidden md:block text-[11px] text-[#C5BAAA] text-center mt-2">
         Enter 发送 · Ctrl+Enter 换行
       </p>
     </footer>

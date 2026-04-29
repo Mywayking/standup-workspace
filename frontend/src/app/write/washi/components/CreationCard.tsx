@@ -117,9 +117,9 @@ export function CreationCard({ card, onAction, onSourceClick }: Props) {
           </p>
         )}
 
-        {/* Source path */}
+        {/* Source path — desktop only, hidden on mobile */}
         {card.sourcePath.length > 0 && (
-          <p className="text-[11px] text-[#C5BAAA] mb-3">
+          <p className="hidden md:block text-[11px] text-[#C5BAAA] mb-3">
             来源：{card.sourcePath.join(" → ")}
           </p>
         )}

@@ -92,6 +92,39 @@ test("desktop lg+: three-column layout, mobile controls hidden", async ({ page }
   await expect(sidebar).toBeVisible();
 });
 
-// ── Note ──────────────────────────────────────────────────
-// Desktop session creation is covered by workflow-source-path.spec.ts.
-// This file focuses on layout validation only.
+// ─── Mobile noise reduction ────────────────────────────────
+
+test("mobile: quick chips + desktop hint hidden, only textarea + send button", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+
+  await page.goto(`${BASE}/write`, { waitUntil: "networkidle" });
+  await page.evaluate(() => localStorage.clear());
+  await page.reload({ waitUntil: "networkidle" });
+
+  await expect(page.getByTestId("material-input")).toBeVisible({ timeout: 20000 });
+
+  // Quick chip "输入素材" should NOT be visible on mobile
+  await expect(page.getByRole("button", { name: "输入素材" })).not.toBeVisible();
+
+  // Desktop hint "Enter 发送" should NOT be visible on mobile
+  await expect(page.getByText("Enter 发送")).not.toBeVisible();
+
+  // Submit button should still be visible
+  await expect(page.getByTestId("submit-write")).toBeVisible();
+});
+
+test("desktop md+: quick chips + desktop hint visible", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+
+  await page.goto(`${BASE}/write`, { waitUntil: "networkidle" });
+  await page.evaluate(() => localStorage.clear());
+  await page.reload({ waitUntil: "networkidle" });
+
+  await expect(page.getByTestId("material-input")).toBeVisible({ timeout: 20000 });
+
+  // Quick chip "输入素材" should be visible on md+
+  await expect(page.getByRole("button", { name: "输入素材" })).toBeVisible();
+
+  // Desktop hint should be visible on md+
+  await expect(page.getByText("Enter 发送")).toBeVisible();
+});
