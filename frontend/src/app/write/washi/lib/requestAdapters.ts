@@ -26,7 +26,7 @@ export function buildRequestBody(
       return { premise: text, count: "5", ...base };
 
     case "joke_to_premise":
-      return { joke: text, ...base };
+      return { text, ...base };
 
     case "feedback":
       return {
