@@ -28,8 +28,8 @@ export function useWriteGeneration(options: UseWriteGenerationOptions, activeSes
 
   const task = useStreamingTask();
 
-  function start(text: string, extra?: Record<string, string>, sessionId?: string) {
-    const nextIntent = detectWriteIntent(text);
+  function start(text: string, extra?: Record<string, string>, sessionId?: string, forceIntent?: WriteIntent) {
+    const nextIntent = forceIntent ?? detectWriteIntent(text);
     setIntent(nextIntent);
     setDraftTokens("");
 

@@ -11,6 +11,7 @@ import { generateSessionTitle } from "./types";
 import { useWriteSession } from "./hooks/useWriteSession";
 import { useWriteGeneration } from "./hooks/useWriteGeneration";
 import { detectWriteIntent } from "./hooks/useWriteIntent";
+import { WRITE_ENDPOINT_MAP } from "./lib/endpointMap";
 import { ResponsiveWashiShell } from "./components/ResponsiveWashiShell";
 import { WorkSidebar } from "./components/WorkSidebar";
 import { WashiMainFlow } from "./WashiMainFlow";
@@ -126,7 +127,14 @@ export function WashiWriteClient() {
           createdAt: Date.now(),
         };
         addCard(userCard);
-        generation.start(text, undefined, session.id);
+        // Force the intent type from the action's nextIntent, bypassing detectWriteIntent
+        const forcedIntent = {
+          type: action.nextIntent ?? "rewrite",
+          endpoint: WRITE_ENDPOINT_MAP[action.nextIntent ?? "rewrite"] as string,
+          confidence: 1,
+          reason: "action forced intent",
+        };
+        generation.start(text, undefined, session.id, forcedIntent);
         return;
       }
 

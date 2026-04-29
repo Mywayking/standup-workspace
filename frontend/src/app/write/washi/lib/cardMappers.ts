@@ -87,11 +87,31 @@ function extractContent(
   const r = (result ?? {}) as Record<string, unknown>;
 
   switch (intentType) {
-    case "premise":
     case "joke_to_premise": {
+      const rec = r.recommendation as Record<string, unknown> | undefined;
+      const recText = rec?.text as string | undefined;
+      const firstPremise =
+        Array.isArray(r.premises) && r.premises.length > 0
+          ? ((r.premises[0] as Record<string, unknown>)?.title as string | undefined) ??
+            ((r.premises[0] as Record<string, unknown>)?.opening_line as string | undefined) ??
+            (typeof r.premises[0] === "string" ? r.premises[0] : undefined)
+          : undefined;
+      const premise =
+        recText ??
+        firstPremise ??
+        (r.core_topic as string | undefined) ??
+        fallback;
+      return premise;
+    }
+
+    case "premise": {
+      // Support both flat {premise: string} and structured {recommendation: {text: string}} formats
+      const rec = r.recommendation as Record<string, unknown> | undefined;
+      const recText = rec?.text as string | undefined;
       const premise =
         (r.premise as string | undefined) ??
         (r.core_premise as string | undefined) ??
+        recText ??
         ((r.result as Record<string, unknown>)?.premise as string | undefined) ??
         ((r.result as Record<string, unknown>)?.core_premise as string | undefined) ??
         fallback;
