@@ -5,7 +5,7 @@
 
 "use client";
 
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import type { WorkCard, CardAction } from "./types";
 import { buildSourcePath } from "./types";
 import { useWriteSession } from "./hooks/useWriteSession";
@@ -13,12 +13,22 @@ import { useWriteGeneration } from "./hooks/useWriteGeneration";
 import { WRITE_ENDPOINT_MAP } from "./lib/endpointMap";
 import { ResponsiveWashiShell } from "./components/ResponsiveWashiShell";
 import { WorkSidebar } from "./components/WorkSidebar";
+import { MobileDrawer } from "./components/MobileDrawer";
+import { MobileSheet } from "./components/MobileSheet";
 import { WashiMainFlow } from "./WashiMainFlow";
 import { WashiRightPanel } from "./WashiRightPanel";
 
 const EXAMPLE_MATERIAL = "老板说我们要有主人翁意识，但公司裁员的时候又说我是外包。这个素材怎么写？";
 
 export function WashiWriteClient() {
+  // ── Mobile drawer / sheet state ────────────────────────
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+
+  const openDrawer = useCallback(() => setDrawerOpen(true), []);
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+  const openOutline = useCallback(() => setOutlineOpen(true), []);
+  const closeOutline = useCallback(() => setOutlineOpen(false), []);
   const {
     sessions,
     activeSession,
@@ -157,16 +167,29 @@ export function WashiWriteClient() {
   // ── Session select ────────────────────────────────────────
 
   const handleSelectSession = useCallback(
-    (id: string) => setActiveSessionId(id),
-    [setActiveSessionId]
+    (id: string) => {
+      setActiveSessionId(id);
+      closeDrawer();
+    },
+    [setActiveSessionId, closeDrawer]
   );
 
   // ── Topbar ───────────────────────────────────────────────
 
   const topbar = (
     <header className="flex items-center gap-2.5 px-4 py-3.5 border-b border-black/10 md:px-6 bg-[#FBF8F0]">
-      {/* Mobile: left hamburger (controlled by MobileDrawer) */}
-      <div className="md:hidden w-9 h-9 shrink-0" />
+      {/* Mobile: hamburger button to open session list */}
+      <button
+        onClick={openDrawer}
+        className="md:hidden w-9 h-9 shrink-0 flex items-center justify-center rounded-lg hover:bg-black/5 active:bg-black/10 transition-colors"
+        aria-label="打开作品列表"
+      >
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <rect x="2" y="4.5" width="14" height="1.5" rx="0.75" fill="currentColor" />
+          <rect x="2" y="8.25" width="14" height="1.5" rx="0.75" fill="currentColor" />
+          <rect x="2" y="12" width="14" height="1.5" rx="0.75" fill="currentColor" />
+        </svg>
+      </button>
 
       {/* Title */}
       <div className="flex-1 min-w-0">
@@ -178,7 +201,20 @@ export function WashiWriteClient() {
         </p>
       </div>
 
-      {/* Desktop status pills */}
+      {/* Mobile: outline button (lg+ shows sidebar, <lg gets bottom sheet) */}
+      <button
+        onClick={openOutline}
+        className="lg:hidden w-9 h-9 shrink-0 flex items-center justify-center rounded-lg hover:bg-black/5 active:bg-black/10 transition-colors"
+        aria-label="打开作品脉络"
+      >
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <circle cx="9" cy="9" r="2.5" fill="currentColor" />
+          <circle cx="9" cy="3.5" r="1.5" fill="currentColor" opacity="0.5" />
+          <circle cx="9" cy="14.5" r="1.5" fill="currentColor" opacity="0.5" />
+          <line x1="9" y1="5" x2="9" y2="6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
+          <line x1="9" y1="11.5" x2="9" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
+        </svg>
+      </button>
       <div className="hidden md:flex items-center gap-2">
         {generation.state.meta?.selected_model && (
           <span className="px-2.5 py-1 rounded-full border border-black/10 text-[12px] text-[#8A8174] bg-white/30">
@@ -216,7 +252,10 @@ export function WashiWriteClient() {
       sessions={sessions}
       activeSessionId={activeSessionId}
       onSelect={handleSelectSession}
-      onNew={() => createSession("")}
+      onNew={() => {
+        createSession("");
+        closeDrawer();
+      }}
     />
   );
 
@@ -234,10 +273,23 @@ export function WashiWriteClient() {
   // ── Render ───────────────────────────────────────────────
 
   return (
-    <ResponsiveWashiShell
-      sidebar={sidebarContent}
-      outline={outlineContent}
-      main={mainContent}
-    />
+    <>
+      {/* Mobile: left drawer for session list */}
+      <MobileDrawer open={drawerOpen} onClose={closeDrawer}>
+        {sidebarContent}
+      </MobileDrawer>
+
+      {/* Mobile: bottom sheet for outline panel */}
+      <MobileSheet open={outlineOpen} onClose={closeOutline}>
+        {outlineContent}
+      </MobileSheet>
+
+      {/* Desktop: three-column shell */}
+      <ResponsiveWashiShell
+        sidebar={sidebarContent}
+        outline={outlineContent}
+        main={mainContent}
+      />
+    </>
   );
 }
